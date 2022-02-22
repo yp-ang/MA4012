@@ -15,10 +15,6 @@ const int slow_speed = 20;
 //const int speedOffset = 5;
 
 
-
-
-
-
 void start_process(){
 	//movement to middle of field
 	}
@@ -65,6 +61,7 @@ void movement_t(int directionMode, int speed, int duration){
 
 void detect_boundary(int left_f, int right_f){
 	if(left_f==0 && right_f==0){	//detect both front sensors -> turn right full round
+		movement_t(-1,slow_speed,1000);
 		movement_t(3,slow_speed,4000);
 		movement(0,0);
 		}
