@@ -22,12 +22,14 @@ const int slow_speed = 20;
 void start_process(){
 	//movement to middle of field
 	}
+
 void movement(int directionMode, int speed){
-	// 1 =	forward
-	//-1 =	reverse
-	// 2 =	rotate left
-	// 3 = 	rotate right
-	// 0 =	stop
+	/*directionMode	 1 =	forward
+									-1 =	reverse
+									 2 =	rotate left
+									 3 = 	rotate right
+									 0 =	stop
+	*/
 	if (directionMode == 1){					//forward
 		motor[port2] = -speed;
 		motor[port3] = speed;
@@ -48,31 +50,30 @@ void movement(int directionMode, int speed){
 		motor[port2] = 0;
 		motor[port3] = 0;
 		}
-	else{															//stop if directionMode is unrecognised
+	else{								//stop if directionMode is unrecognised
 		motor[port2] = 0;
 		motor[port3] = 0;
 		}
 	}
-
+void movement_t(int directionMode, int speed, int duration){
+	//duration in miliseconds
+	clearTimer(T1);
+	if (time1[T1] < duration){
+		movement(directionMode, speed);
+		}
+	}
 
 void detect_boundary(int left_f, int right_f){
-	clearTimer(T1);
 	if(left_f==0 && right_f==0){	//detect both front sensors -> turn right full round
-		while (time1[T1] < 3000){
-			movement(3,slow_speed);
-			}
+		movement_t(3,slow_speed,4000);
 		movement(0,0);
 		}
 	else if (left_f==0){					//detect left sensor -> turn left
-		while (time1[T1] < 2000){
-			movement(3,slow_speed);
-			}
+		movement_t(3,slow_speed,2000);
 		movement(0,0);
 		}
 	else if (right_f==0){					//detect right sensor -> turn right
-		while (time1[T1] < 2000){
-			movement(2,slow_speed);
-			}
+		movement_t(2,slow_speed,2000);
 		movement(0,0);
 		}
 	}
