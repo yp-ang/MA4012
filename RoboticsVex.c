@@ -54,8 +54,10 @@ void movement(int directionMode, int speed){
 void movement_t(int directionMode, int speed, int duration){
 	//duration in miliseconds
 	clearTimer(T1);
-	if (time1[T1] < duration){
-		movement(directionMode, speed);
+	while(true){
+		if (time1[T1] < duration){
+			movement(directionMode, speed);
+			}
 		}
 	}
 
