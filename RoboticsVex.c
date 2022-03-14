@@ -151,13 +151,13 @@ void detect_boundary(int left_f, int right_f){
 	}
 }
 
-float detect_ball_deposit()
+bool detect_ball_deposit()
 {
 	if (SensorValue(DOOR_LSWITCH_PORT) == 1)
 	{
 		return (SensorValue(DOOR_DIST_IR_PORT) > DOOR_DIST_IR_THRESHOLD);
 	}
-	return -1;
+	return false;
 }
 
 bool detect_ball_field(){
@@ -254,7 +254,7 @@ void runMachine()
 				break;
 				case RETURN_TO_BASE:
 					movement(REVERSE, OP_SPEED);
-					if (detect_ball_deposit() >= DOOR_DIST_IR_THRESHOLD)
+					if (detect_ball_deposit())
 					{
 						machine_return_ball_seq = DEPOSIT_BALL;
 					}
