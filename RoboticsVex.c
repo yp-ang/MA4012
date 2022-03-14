@@ -1,38 +1,53 @@
-#pragma config(Sensor, dgtl7, Floor_frontLeft, sensorDigitalIn)
-#pragma config(Sensor, dgtl8, Floor_frontRight, sensorDigitalIn)
-
-
+//EVERYTHING DISTANCE RELATED IN mm!
 //Motor Definitions
 
-#define LEFT_MOTOR port3
-#define RIGHT_MOTOR port2
+#define LEFT_MOT_PORT port3
+#define RIGHT_MOT_PORT port2
+#define DOOR_MOT_PORT port4
+#define DOOR_MOT_SPEED 50
 #define SPEED_OFFSET 0.0
 #define SLOW_SPEED 20.0
+#define OP_SPEED 127.0
 //Limit Switch Definitions
 
 #define DOOR_LSWITCH_PORT dgtl2
 #define BALL_LSWITCH_PORT dgtl1
 //Distance IR Sensor Definitions
 
-#define LEFT_DISTANCE_IR_TYPE ORANGE_YELLOW
-#define LEFT_DISTANCE_IR_PORT in1
-#define RIGHT_DISTANCE_IR_TYPE ORANGE_GREEN
-#define RIGHT_DISTANCE_IR_PORT in2
-#define DOOR_DISTANCE_IR_TYPE ORANGE_BLUE
-#define DOOR_DISTANCE_IR_PORT in3
+#define BOT_DIST_IR_TYPE ORANGE_YELLOW
+#define BOT_DIST_IR_PORT in1
+#define TOP_DIST_IR_TYPE ORANGE_GREEN
+#define TOP_DIST_IR_PORT in2
+#define DOOR_DIST_IR_TYPE ORANGE_BLUE
+#define DOOR_DIST_IR_PORT in3
+#define DOOR_DIST_IR_THRESHOLD 130.0 //in mm
+#define DIST_IR_MAX_DIFF 68.0 //in mm
+#define DIST_IR_MIN_DIFF 30.0 //in mm
 
 //Reflective Sensor Definitions
 #define LEFT_REFLECTIVE_IR_PORT in4
 #define RIGHT_REFLECTIVE_IR_PORT in5
+#define LEFT_REFLECTIVE_IR_THRESHOLD 1100
+#define RIGHT_REFLECTIVE_IR_THRESHOLD 1100
+
+//Compass Definitions
+#define NORTH_PORT dgtl3
+#define EAST_PORT dgtl4
+#define WEST_PORT dgtl5
+#define SOUTH_PORT dgtl6
 
 //Utils
 #define WIFI_DEBUGGING 0
 #define UART_PORT uartOne
 
 
-enum ir_sensor{ORANGE_PINK, ORANGE_GREEN, ORANGE_YELLOW, ORANGE_BLUE};
+enum ir_sensor{ORANGE_PINK, ORANGE_GREEN, ORANGE_YELLOW, ORANGE_BLUE, NUMBER_OF_IR_SENSORS};
 enum direction{STOP, REVERSE, STRAIGHT, CLOCKWISE, CCLOCKWISE};
 enum bearing{NORTH, NORTHEAST, EAST, SOUTHEAST, SOUTH, SOUTHWEST, WEST, NORTHWEST, ERROR};
+enum mode{MOVE_TO_CENTER, SEARCH_FOR_BALL, MOVE_TO_BALL, RETURN_BALL};
+enum return_ball_seq{ALIGN_BEARING, RETURN_TO_BASE, DEPOSIT_BALL};
+int ir_sensor_max_value[(int) NUMBER_OF_IR_SENSORS] = {1853, 1828, 1884, 1978};
+int ir_sensor_min_value[(int) NUMBER_OF_IR_SENSORS] = {539, 384, 386, 307};
 
 /*
 MA4012
@@ -40,7 +55,8 @@ Group Project
 YuPin edit 22/2/2022
 
 */
-
+mode machine_mode = MOVE_TO_CENTER;
+mode machine_return_ball_seq = ALIGN_BEARING;
 const int slow_speed = 20;
 
 void send_debug_msg(char* msg, int size)
@@ -51,6 +67,11 @@ void send_debug_msg(char* msg, int size)
 		sendChar(UART_PORT, msg[i]);
 	}
 #endif
+}
+
+bool check_within_range(float value, float min, float max)
+{
+	return value <= min || value >= max ?  false : true;
 }
 
 float convert_ir_reading_to_distance(ir_sensor sensor, int analog)
@@ -74,36 +95,32 @@ float convert_ir_reading_to_distance(ir_sensor sensor, int analog)
 	}
 }
 
-void start_process(){
-	//movement to middle of field
-}
-
 void movement(direction directionMode, int speed){
 	switch (directionMode)
 	{
 	case STOP:
-		motor[LEFT_MOTOR] = 0;
-		motor[RIGHT_MOTOR] = 0;
+		motor[LEFT_MOT_PORT] = 0;
+		motor[RIGHT_MOT_PORT] = 0;
 		break;
 	case STRAIGHT:
-		motor[LEFT_MOTOR] = -speed;
-		motor[RIGHT_MOTOR] = speed;
+		motor[LEFT_MOT_PORT] = -speed;
+		motor[RIGHT_MOT_PORT] = speed;
 		break;
 	case REVERSE:
-		motor[LEFT_MOTOR] = speed;
-		motor[RIGHT_MOTOR] = -speed;
+		motor[LEFT_MOT_PORT] = speed;
+		motor[RIGHT_MOT_PORT] = -speed;
 		break;
 	case CLOCKWISE:
-		motor[LEFT_MOTOR] = speed;
-		motor[RIGHT_MOTOR] = speed;
+		motor[LEFT_MOT_PORT] = speed;
+		motor[RIGHT_MOT_PORT] = speed;
 		break;
 	case CCLOCKWISE:
-		motor[LEFT_MOTOR] = -speed;
-		motor[RIGHT_MOTOR] = -speed;
+		motor[LEFT_MOT_PORT] = -speed;
+		motor[RIGHT_MOT_PORT] = -speed;
 		break;
 	default:
-		motor[LEFT_MOTOR] = 0;
-		motor[RIGHT_MOTOR] = 0;
+		motor[LEFT_MOT_PORT] = 0;
+		motor[RIGHT_MOT_PORT] = 0;
 		break;
 	}
 }
@@ -134,18 +151,81 @@ void detect_boundary(int left_f, int right_f){
 	}
 }
 
+float detect_ball_deposit()
+{
+	if (SensorValue(DOOR_LSWITCH_PORT) == 1)
+	{
+		return (SensorValue(DOOR_DIST_IR_PORT) > DOOR_DIST_IR_THRESHOLD);
+	}
+	return -1;
+}
+
 bool detect_ball_field(){
-	//sensor
-	//return distance value
+	float bottom_ir_distance = convert_ir_reading_to_distance(BOT_DIST_IR_TYPE, SensorValue(BOT_DIST_IR_PORT));
+	float top_ir_distance = convert_ir_reading_to_distance(TOP_DIST_IR_TYPE, SensorValue(TOP_DIST_IR_TYPE));
+	if (check_within_range(bottom_ir_distance, ir_sensor_min_value[BOT_DIST_IR_TYPE], ir_sensor_max_value[BOT_DIST_IR_TYPE]))
+	{
+		//Something detected at bottom sensor
+		if (check_within_range(top_ir_distance, ir_sensor_min_value[TOP_DIST_IR_TYPE], ir_sensor_max_value[TOP_DIST_IR_TYPE]))
+		{
+			//Something detected at top sensor
+			if (top_ir_distance - bottom_ir_distance > DIST_IR_MIN_DIFF)
+			{
+				//ball detetcted, robot detected
+			}
+		//bottom sensor detect, top sensor no detect, only ball
+		}
+	}
+	// nothing detected, if bottom did not detect anything, nothing should be at the top
+	return false;
+}
+
+bool detect_ball_collector(){
+	return (SensorValue(BALL_LSWITCH_PORT) == 1);
+}
+
+enum bearing get_heading()
+{
+	byte heading = 0x00;
+	heading & SensorValue(NORTH_PORT) & (SensorValue(EAST_PORT) << 1) & (SensorValue(SOUTH_PORT) << 2) & (SensorValue(WEST_PORT) << 3);
+	switch (heading)
+{	case 1:
+		return NORTH;
+		break;
+	case  3:
+		return NORTHEAST;
+		break;
+	case 2:
+		return EAST;
+		break;
+	case 6:
+		return SOUTHEAST;
+		break;
+	case 4:
+		return SOUTH;
+		break;
+	case 12:
+		return SOUTHWEST;
+		break;
+	case 8:
+		return WEST;
+		break;
+	case 9:
+		return NORTHWEST;
+		break;
+	default:
+		return ERROR;
+	}
 }
 
 void move_to_ball(/*distance*/){
 	//
 }
 
-bool detect_ball_collector(){
-	return (SensorValue(BALL_LSWITCH_PORT) == 1);
+void start_process(){
+	//movement to middle of field
 }
+
 
 void align_orientation(){
 	//compass value
@@ -157,6 +237,39 @@ void move_to_collection(){
 	start_process();
 }
 
+void runMachine()
+{
+	switch (machine_mode)
+	{
+		case MOVE_TO_CENTER:
+		break;
+		case SEARCH_FOR_BALL:
+		break;
+		case MOVE_TO_BALL:
+		break;
+		case RETURN_BALL:
+			switch (machine_return_ball_seq)
+			{
+				case ALIGN_BEARING:
+				break;
+				case RETURN_TO_BASE:
+					movement(REVERSE, OP_SPEED);
+					if (detect_ball_deposit() >= DOOR_DIST_IR_THRESHOLD)
+					{
+						machine_return_ball_seq = DEPOSIT_BALL;
+					}
+				break;
+				case DEPOSIT_BALL:
+					motor[DOOR_MOT_PORT] = DOOR_MOT_SPEED;
+					delay(300);
+					machine_mode = MOVE_TO_CENTER;
+				break;
+			}
+		break;
+		default:
+		break;
+	}
+}
 //////////////////////////////////////////////////////////
 task main()
 {
@@ -168,7 +281,7 @@ task main()
 	{
 		movement(1,slow_speed);
 
-		detect_boundary(SensorValue[Floor_frontLeft],SensorValue[Floor_frontRight]);
+		detect_boundary(SensorValue[LEFT_REFLECTIVE_IR_PORT],SensorValue[RIGHT_REFLECTIVE_IR_PORT]);
 
 		if (detect_ball_field()==true)
 		{
