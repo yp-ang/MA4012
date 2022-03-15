@@ -237,7 +237,12 @@ void move_to_collection(){
 	start_process();
 }
 
-void runMachine()
+void keep_door_closed()
+{
+	motor[DOOR_MOT_PORT] = DOOR_MOT_SPEED * (SensorValue[DOOR_LSWITCH_PORT] == 0);
+}
+
+void run_machine()
 {
 	switch (machine_mode)
 	{
