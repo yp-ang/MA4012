@@ -53,6 +53,9 @@
 #define ANGLE_SLICE 0.16
 
 
+float lowest_reading = 9999;
+
+
 enum ir_sensor{ORANGE_PINK, ORANGE_GREEN, ORANGE_YELLOW, ORANGE_BLUE, NUMBER_OF_IR_SENSORS};
 enum direction{STOP, REVERSE, STRAIGHT, CLOCKWISE, CCLOCKWISE};
 enum bearing{NORTH, NORTHEAST, EAST, SOUTHEAST, SOUTH, SOUTHWEST, WEST, NORTHWEST, ERROR};
@@ -119,11 +122,11 @@ void movement(direction directionMode, int speed = 0){
 		motor[LEFT_MOT_PORT] = 0;
 		motor[RIGHT_MOT_PORT] = 0;
 		break;
-	case STRAIGHT:
+	case REVERSE:
 		motor[LEFT_MOT_PORT] = -speed;
 		motor[RIGHT_MOT_PORT] = speed1;
 		break;
-	case REVERSE:
+	case STRAIGHT:
 		motor[LEFT_MOT_PORT] = speed;
 		motor[RIGHT_MOT_PORT] = -speed1;
 		break;
@@ -212,7 +215,7 @@ bool detect_ballv3()
 	const int array_size = 10;
 	static float dist_array[array_size] = {1800.0, 1800.0, 1800.0, 1800.0,
 		1800.0, 1800.0, 1800.0, 1800.0, 1800.0, 1800.0};
-	float lowest_reading = 9999;
+
 	int lowest_reading_index = 0;
 	int count = 0;
 	int left_analog = take_average(LEFT_DIST_IR_PORT, 1);
@@ -311,7 +314,12 @@ end2:
 		snprintf(buf, sizeof(buf), "DETECTED!!!!!!!!!!!");
 		send_debug_msg(buf, sizeof(buf));
 #endif
+		for (int i = 0; i < array_size; i++)
+		{
+			dist_array[i] = 1800.0;
+		}
 		return true;
+
 	}
 	return false;
 }
@@ -404,6 +412,10 @@ bool detect_ball_fieldv2()
 	return result;
 }
 
+int correction_time(float reading){
+
+	return reading/3 + 200;
+}
 // bool detect_ball_field(){
 // 	int left_analog = take_average(LEFT_DIST_IR_PORT, 4);
 // 	int right_analog = take_average(RIGHT_DIST_IR_PORT, 4);
@@ -594,8 +606,16 @@ task main()
 
 		//detect_ball_field();
 		movement(direction1, 24);
+
+		lowest_reading = 9999;
 		if (detect_ballv3())
 		{
+			movement(CCLOCKWISE, 24);
+			delay(correction_time(lowest_reading));
+			movement(STRAIGHT, 100);
+			motor[port2] = 127;
+			delay(1000);
+			movement(STOP);
 			direction1 = STOP;
 		}
 		if (getChar(UART_PORT) == '1')
