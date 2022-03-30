@@ -33,12 +33,12 @@
 //Reflective Sensor Definitions
 #define FRT_LFT_REFL_IR_PORT in4
 #define FRT_RGT_REFL_IR_PORT in5
-#define FRT_LFT_REFL_IR_THRESHOLD 1100
-#define FRT_RGT_REFL_IR_THRESHOLD 1100
+#define FRT_LFT_REFL_IR_THRESHOLD 1500
+#define FRT_RGT_REFL_IR_THRESHOLD 1500
 #define BCK_LFT_REFL_IR_PORT in4
 #define BCK_RGT_REFL_IR_PORT in5
-#define BCK_LFT_REFL_IR_THRESHOLD 1100
-#define BCK_RGT_REFL_IR_THRESHOLD 1100
+#define BCK_LFT_REFL_IR_THRESHOLD 1500
+#define BCK_RGT_REFL_IR_THRESHOLD 1500
 
 //Compass Definitions
 #define NORTH_PORT dgtl3
@@ -76,6 +76,7 @@ YuPin edit 22/2/2022
 mode machine_mode = MOVE_TO_CENTER;
 mode machine_return_ball_seq = ALIGN_BEARING;
 const int slow_speed = 20;
+
 
 void send_debug_msg(char* msg, int size)
 {
@@ -416,54 +417,6 @@ int correction_time(float reading){
 
 	return reading/3 + 200;
 }
-// bool detect_ball_field(){
-// 	int left_analog = take_average(LEFT_DIST_IR_PORT, 4);
-// 	int right_analog = take_average(RIGHT_DIST_IR_PORT, 4);
-// 	float ir_distance = convert_ir_reading_to_distance(LEFT_DIST_IR_TYPE, left_analog);
-// 	float right_distance = convert_ir_reading_to_distance(RIGHT_DIST_IR_TYPE, right_analog);
-// 	bool right_withcurrently_in_range =
-// 	check_withcurrently_in_range(right_analog, ir_sensor_min_value[RIGHT_DIST_IR_TYPE], ir_sensor_max_value[RIGHT_DIST_IR_TYPE]);
-// 	bool curr_in_range =
-// 	check_withcurrently_in_range(left_analog, ir_sensor_min_value[LEFT_DIST_IR_TYPE], ir_sensor_max_value[LEFT_DIST_IR_TYPE]);
-// #ifdef WIFI_DEBUGGING
-// 	char buf[64];
-// 	snprintf(buf, sizeof(buf), "left distance: %f, right distance: %f\n",
-// 	ir_distance, right_distance);
-// 	send_debug_msg(buf, sizeof(buf));
-// #endif
-// 	//If one sensors detected a distance while the other didn't, probably a ball
-// 	if (!right_withcurrently_in_range != !curr_in_range)
-// 	{
-// #ifdef WIFI_DEBUGGING
-// 		send_debug_msg("Only one sensor\n", 24);
-// #endif
-// 		return true;
-// 	}
-
-// 	//Two distances are detected then we need to subtract the distance
-// 	else if (right_withcurrently_in_range && curr_in_range)
-// 	{
-
-// 		//If values are above a certain threshold, probably a ball, with robot behind
-// 		if (abs(right_distance - ir_distance) > DIST_IR_MIN_DIFF)
-// 		{
-// #ifdef WIFI_DEBUGGING
-// 			send_debug_msg("Dist Threshold\n", 24);
-// #endif
-// 			return true;
-// 		}
-// 		else
-// 		{
-// #ifdef WIFI_DEBUGGING
-// 			send_debug_msg("Nothing\n", 24);
-// #endif
-// 		}
-
-// 		//else is robot
-// 	}
-// 	// Detect nothing so just return false
-// 	return false;
-// }
 
 bool detect_ball_collector(){
 	return (SensorValue(BALL_LSWITCH_PORT) == 1);
@@ -529,15 +482,61 @@ void keep_door_closed()
 
 void run_machine()
 {
+	static unsigned long timer = 0;
 	switch (machine_mode)
 	{
 	case MOVE_TO_CENTER:
+		motor[ROLLER_MOT_PORT] = 127;
+		movement(STRAIGHT, 100);
+		if (time1[T1] > 4000)
+		{
+			machine_mode = SEARCH_FOR_BALL;
+			clearTimer(T1);
+		}
 		break;
 	case SEARCH_FOR_BALL:
+		motor[ROLLER_MOT_PORT] = 127;
+		if (detect_ball_collector)
+		{
+			machine_mode = RETURN_BALL;
+			break;
+		}
+		if (direction1 == STRAIGHT)
+		{
+			movement(direction1, search_ball_speed);
+		}
+		movement(direction1, search_ball_speed);
+		if (detect_ballv3())
+		{
+			machine_mode = MOVE_TO_BALL;
+			clearTimer(T1);
+			break;
+		}
+		if (time1[T1]>4000) //can replace this with compass usage to track if robot rotated almost 360degrees
+		{
+			direction1 = STRAIGHT;
+			search_ball_speed = 100;
+			clearTimer(T1);
+			break;
+		}
+		if (time1[T1]>2000 && direction1 == STRAIGHT)
+		{
+			direction1 = CLOCKWISE;
+			search_ball_speed = 24;
+			clearTimer(T1);
+		}
 		break;
 	case MOVE_TO_BALL:
+		motor[ROLLER_MOT_PORT] = 127;
+		movement(CCLOCKWISE, 24);
+		delay(correction_time(lowest_reading));
+		movement(STRAIGHT, 100);
+		//continue on, not completed
+		//
+		//
 		break;
 	case RETURN_BALL:
+		motor[ROLLER_MOT_PORT] = -40;
 		switch (machine_return_ball_seq)
 		{
 		case ALIGN_BEARING:
@@ -561,81 +560,113 @@ void run_machine()
 	}
 }
 
-direction direction1 = STOP;
+
+
+
+task runMachine()
+{
+	direction direction1 = CLOCKWISE;
+	int search_ball_speed = 24;
+	while(1)
+	{
+		run_machine();
+		writeDebugStreamLine("runmachine");
+		wait1Msec(20);
+	}
+}
+
+task edgeDetection()
+{
+	const int reverse_speed = 100;
+	const int rotate_speed = 100;
+	while(1)
+	{
+		bool front_left_detected = SensorValue(FRT_LFT_REFL_IR_PORT) <= FRT_LFT_REFL_IR_THRESHOLD;
+		bool front_right_detected = SensorValue(FRT_RGT_REFL_IR_PORT) <= FRT_RGT_REFL_IR_THRESHOLD;
+		bool back_left_detected = SensorValue(BCK_LFT_REFL_IR_PORT) <= BCK_LFT_REFL_IR_THRESHOLD;
+		bool back_right_detected = SensorValue(BCK_RGT_REFL_IR_PORT) <= BCK_RGT_REFL_IR_THRESHOLD;
+		if (front_left_detected)
+		{
+			movement(REVERSE,reverse_speed);
+			delay(300);
+			movement(CLOCKWISE,rotate_speed);
+			delay(300);
+		}
+		else if (front_right_detected)
+		{
+			movement(REVERSE,reverse_speed);
+			delay(300);
+			movement(CCLOCKWISE,rotate_speed);
+			delay(300);
+		}
+		else if (back_left_detected)
+		{
+			movement(STRAIGHT,reverse_speed);
+			delay(300);
+			movement(CLOCKWISE,rotate_speed);
+			delay(300);
+		}
+		else if (back_right_detected)
+		{
+			movement(STRAIGHT,reverse_speed);
+			delay(300);
+			movement(CCLOCKWISE,rotate_speed);
+			delay(300);
+		}
+		wait1Msec(200);
+	}
+}
+
 //////////////////////////////////////////////////////////
 task main()
 {
-
 #ifdef WIFI_DEBUGGING
 	setBaudRate(UART_PORT, baudRate115200);
 	send_debug_msg("Vex Started\n", 13);
 	writeDebugStreamLine("%d", nImmediateBatteryLevel);
-	//while (true)
-	//{
+
 	while(true)
 	{
 		if (getChar(UART_PORT) == '1')
 		{
 			send_debug_msg("Break loop\n", 13);
+			startTask(runMachine, kDefaultTaskPriority + 1);
+			startTask(edgeDetection);
+			clearTimer(T1);
 			break;
 		}
 	}
-	//SensorValue[rightEncoder] = 0;    /* Clear the encoders for    */
-	//SensorValue[leftEncoder]  = 0;    /* consistancy and accuracy. */
-	//movement(CLOCKWISE, 24);
-	//delay(5000);
-	//movement(STOP);
-	//char buf[24];
-	//snprintf(buf, sizeof(buf), "%d, %d", SensorValue[leftEncoder], SensorValue[rightEncoder]);
-	//writeDebugStreamLine("%d, %d", SensorValue[leftEncoder], SensorValue[rightEncoder]);
-	//send_debug_msg(buf, sizeof(buf));
+#endif
+	//while (true)
+	//{
+
+	//	//detect_ball_field();
+	//	movement(direction1, 24);
+
+	//	lowest_reading = 9999;
+	//	if (detect_ballv3())
+	//	{
+	//		movement(CCLOCKWISE, 24);
+	//		delay(correction_time(lowest_reading));
+	//		movement(STRAIGHT, 100);
+	//		motor[port2] = 127;
+	//		delay(1000);
+	//		movement(STOP);
+	//		direction1 = STOP;
+	//	}
+
+	//	if (getChar(UART_PORT) == '1')
+	//	{
+	//		direction1 = CLOCKWISE;
+	//	}
+	//	else if (getChar(UART_PORT) == '0'){
+	//		direction1 = STOP;
+	//	}
+	//	delay(50);
 	//}
 
-
-#endif
-	while (true)
+	//Don't remove
+	while (1)
 	{
-
-		//int top_analog = take_average(LEFT_DIST_IR_PORT, 4);
-		//int bot_analog = take_average(RIGHT_DIST_IR_PORT, 4);
-		//float ir_distance = convert_ir_reading_to_distance(LEFT_DIST_IR_TYPE, top_analog) *
-		//check_withcurrently_in_range(top_analog, ir_sensor_min_value[(int)LEFT_DIST_IR_TYPE], ir_sensor_max_value[(int)LEFT_DIST_IR_TYPE]);
-		//float right_distance = convert_ir_reading_to_distance(RIGHT_DIST_IR_TYPE, bot_analog) *
-		//check_withcurrently_in_range(bot_analog, ir_sensor_min_value[(int)RIGHT_DIST_IR_TYPE], ir_sensor_max_value[(int)RIGHT_DIST_IR_TYPE]);
-		//writeDebugStreamLine("Top: %f,Btm: %f, Top Dist: %d, Bot Dist: %d", ir_distance, right_distance, top_analog, bot_analog);
-
-		//detect_ball_field();
-		movement(direction1, 24);
-
-		lowest_reading = 9999;
-		if (detect_ballv3())
-		{
-			movement(CCLOCKWISE, 24);
-			delay(correction_time(lowest_reading));
-			movement(STRAIGHT, 100);
-			motor[port2] = 127;
-			delay(1000);
-			movement(STOP);
-			direction1 = STOP;
-		}
-		if (getChar(UART_PORT) == '1')
-		{
-			direction1 = CLOCKWISE;
-		}
-		else if (getChar(UART_PORT) == '0'){
-			direction1 = STOP;
-		}
-		//int door_analog = take_average(DOOR_DIST_IR_PORT, 4);
-		//float door_distance = convert_ir_reading_to_distance(DOOR_DIST_IR_TYPE, door_analog);
-		//writeDebugStreamLine("Door Dost: %f", door_distance);
-		//if (SensorValue(DOOR_LSWITCH_PORT) == 0)
-		//{
-		//	motor[DOOR_MOT_PORT] = -50;
-		//}
-		//else
-		//{
-		//	motor[DOOR_MOT_PORT] = 0;
-		//}
-		delay(50);
 	}
 }
