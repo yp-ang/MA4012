@@ -25,10 +25,14 @@
 #define DIST_IR_MIN_DIFF 30.0 //in mm
 
 //Reflective Sensor Definitions
-#define LEFT_REFLECTIVE_IR_PORT in4
-#define RIGHT_REFLECTIVE_IR_PORT in5
-#define LEFT_REFLECTIVE_IR_THRESHOLD 1100
-#define RIGHT_REFLECTIVE_IR_THRESHOLD 1100
+#define FRT_LFT_REFL_IR_PORT in4
+#define FRT_RGT_REFL_IR_PORT in5
+#define FRT_LFT_REFL_IR_THRESHOLD 1100
+#define FRT_RGT_REFL_IR_THRESHOLD 1100
+#define BCK_LFT_REFL_IR_PORT in4
+#define BCK_RGT_REFL_IR_PORT in5
+#define BCK_LFT_REFL_IR_THRESHOLD 1100
+#define BCK_RGT_REFL_IR_THRESHOLD 1100
 
 //Compass Definitions
 #define NORTH_PORT dgtl3
@@ -286,7 +290,7 @@ task main()
 	{
 		movement(1,slow_speed);
 
-		detect_boundary(SensorValue[LEFT_REFLECTIVE_IR_PORT],SensorValue[RIGHT_REFLECTIVE_IR_PORT]);
+		detect_boundary(SensorValue[FRT_LFT_REFL_IR_PORT],SensorValue[FRT_RGT_REFL_IR_PORT]);
 
 		if (detect_ball_field()==true)
 		{
