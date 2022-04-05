@@ -35,8 +35,8 @@
 #define FRT_RGT_REFL_IR_PORT in5
 #define FRT_LFT_REFL_IR_THRESHOLD 1100
 #define FRT_RGT_REFL_IR_THRESHOLD 1100
-#define BCK_LFT_REFL_IR_PORT in4
-#define BCK_RGT_REFL_IR_PORT in5
+#define BCK_LFT_REFL_IR_PORT in7
+#define BCK_RGT_REFL_IR_PORT in8
 #define BCK_LFT_REFL_IR_THRESHOLD 1100
 #define BCK_RGT_REFL_IR_THRESHOLD 1100
 
@@ -54,6 +54,7 @@
 
 
 float lowest_reading = 9999;
+float lowest_reading_1 = 9999;
 
 
 enum ir_sensor{ORANGE_PINK, ORANGE_GREEN, ORANGE_YELLOW, ORANGE_BLUE, NUMBER_OF_IR_SENSORS};
@@ -65,7 +66,7 @@ enum return_ball_seq{ALIGN_BEARING, RETURN_TO_BASE, DEPOSIT_BALL};
 /*Thresholds are at 10-60cm as the anything above 60cm for the 10-80cm sensors is just too bad
 For 4-30cm, threshold taken at 30cm
 */
-int ir_sensor_max_value[(int) NUMBER_OF_IR_SENSORS] = {1853, 1828, 1884, 1978};
+int ir_sensor_max_value[(int) NUMBER_OF_IR_SENSORS] = {2000, 2000, 2000, 1978};
 int ir_sensor_min_value[(int) NUMBER_OF_IR_SENSORS] = {508, 472, 476, 307};
 
 /*
@@ -145,23 +146,6 @@ void movement(direction directionMode, int speed = 0){
 	}
 }
 
-
-//void detect_boundary(int left_f, int right_f){
-//	if(left_f==0 && right_f==0){	//detect both front sensors -> turn right full round
-//		movement_t(-1,slow_speed,1000);
-//		movement_t(3,slow_speed,4000);
-//		movement(0,0);
-//	}
-//	else if (left_f==0){					//detect left sensor -> turn left
-//		movement_t(3,slow_speed,2000);
-//		movement(0,0);
-//	}
-//	else if (right_f==0){					//detect right sensor -> turn right
-//		movement_t(2,slow_speed,2000);
-//		movement(0,0);
-//	}
-//}
-
 bool detect_ball_deposit()
 {
 	if (SensorValue(DOOR_LSWITCH_PORT) == 1)
@@ -210,6 +194,179 @@ bool check_ball_threshold(int count, int sensor_distance){
 	}
 }
 
+bool detect_ballv4()
+{
+	int left_analog = take_average(LEFT_DIST_IR_PORT, 1);
+	float left_distance = convert_ir_reading_to_distance(LEFT_DIST_IR_TYPE, left_analog);
+	bool left_curr_in_range =
+	check_within_range(left_distance, 0, 450);
+	lowest_reading = left_distance;
+	int right_analog = take_average(RIGHT_DIST_IR_PORT, 1);
+	float right_distance = convert_ir_reading_to_distance(RIGHT_DIST_IR_TYPE, right_analog);
+	bool right_curr_in_range =
+	check_within_range(right_distance, 0, 450);
+
+#ifdef WIFI_DEBUGGING
+	char buf3[8] = "Value: ";
+	char buf4[8] = "\n";
+	send_debug_msg(buf3, sizeof(buf3));
+	char buf[64];
+	snprintf(buf, sizeof(buf), "%f, %f", left_distance, right_distance);
+	send_debug_msg(buf, sizeof(buf));
+	send_debug_msg(buf4, sizeof(buf4));
+#endif
+	if (!left_curr_in_range && !right_curr_in_range)
+	{
+#ifdef WIFI_DEBUGGING
+		char buf[64];
+		snprintf(buf, sizeof(buf), "left and right not in range", left_distance, right_distance);
+		send_debug_msg(buf, sizeof(buf));
+#endif
+		return false;
+	}
+	if ((left_curr_in_range) && !right_curr_in_range)
+	{
+		if (!right_curr_in_range)
+		{
+#ifdef WIFI_DEBUGGING
+			char buf[64];
+			snprintf(buf, sizeof(buf), "left in range, right not", left_distance, right_distance);
+			send_debug_msg(buf, sizeof(buf));
+#endif
+			return true;
+		}
+		if ((right_distance - left_distance) <= 90)
+		{
+#ifdef WIFI_DEBUGGING
+			char buf[64];
+			snprintf(buf, sizeof(buf), "left and right small diff", left_distance, right_distance);
+			send_debug_msg(buf, sizeof(buf));
+#endif
+			return true;
+		}
+	}
+#ifdef WIFI_DEBUGGING
+	snprintf(buf, sizeof(buf), "left and right big diff", left_distance, right_distance);
+	send_debug_msg(buf, sizeof(buf));
+#endif
+	return false;
+}
+
+bool detect_ballv3_1()
+{
+	const int array_size = 12;
+	static float dist_array[array_size] = {1800.0, 1800.0, 1800.0, 1800.0,
+		1800.0, 1800.0, 1800.0, 1800.0, 1800.0, 1800.0, 1800.0, 1800.0};
+
+	int lowest_reading_index = 0;
+	int count = 0;
+	int right_analog = take_average(RIGHT_DIST_IR_PORT, 1);
+	bool curr_in_range =
+	check_within_range(right_analog, ir_sensor_min_value[RIGHT_DIST_IR_TYPE], ir_sensor_max_value[RIGHT_DIST_IR_TYPE]);
+	float ir_distance = convert_ir_reading_to_distance(RIGHT_DIST_IR_TYPE, right_analog);
+	lowest_reading_1 = ir_distance;
+	for (int i = 0; i < array_size - 1; i++)
+	{
+		dist_array[i] = dist_array[i+1];
+	}
+	dist_array[array_size - 1] = ir_distance;
+#ifdef WIFI_DEBUGGING
+	char buf1[16] = "Start Right: ";
+	char buf2[8] = "\n";
+	send_debug_msg(buf1, sizeof(buf1));
+	for (int i = 0; i < array_size; i++)
+	{
+		char buf[16];
+		snprintf(buf, sizeof(buf), "%d, ", (int)dist_array[i]);
+		send_debug_msg(buf, sizeof(buf));
+	}
+	send_debug_msg(buf2, sizeof(buf2));
+#endif
+	for (int i = 0; i < array_size; i++)
+	{
+		if (dist_array[i] < lowest_reading_1)
+		{
+			lowest_reading_1 = dist_array[i];
+			lowest_reading_index = i;
+		}
+	}
+
+	if (lowest_reading_1 == 0  ||
+		check_within_range(lowest_reading_1, ir_sensor_min_value[RIGHT_DIST_IR_TYPE],
+	ir_sensor_max_value[RIGHT_DIST_IR_TYPE]))
+	{
+		return false;
+	}
+
+	float ratio_thresh = -0.005 * lowest_reading_1 + 4.3;
+
+	//right search
+	bool nir_found;
+	bool nir_1=false;
+	bool nir_2=false;
+	for (int i = lowest_reading_index; i < array_size; i++)
+	{
+		float ratio;
+		ratio = dist_array[i]/lowest_reading_1;
+		if (ratio <= ratio_thresh)
+		{
+			count = count + 1;
+		}
+		else
+		{
+			nir_1 = true;
+			goto end;
+
+		}
+	}
+end:
+	for (int i = lowest_reading_index; i >= 0; i--)
+	{
+		float ratio;
+		ratio = dist_array[i]/lowest_reading_1;
+		if (ratio <= ratio_thresh)
+		{
+			count = count + 1;
+		}
+		else
+		{
+			nir_2 = true;
+			goto end2;
+
+		}
+	}
+end2:
+	nir_found = nir_1 && nir_2;
+	//int count_thresh = -0.0079 * lowest_reading + 5.6499;
+	int count_thresh = 0.00002 * pow(lowest_reading_1, 2) -0.0259 * lowest_reading_1 + 9.373;
+	count = count-1;
+#ifdef WIFI_DEBUGGING
+	char buf3[16] = "Value Right: ";
+	char buf4[8] = "\n";
+	send_debug_msg(buf3, sizeof(buf1));
+	char buf[64];
+	snprintf(buf, sizeof(buf), "%f, %d, %d, %f ", ratio_thresh, count_thresh, count, lowest_reading_1);
+	send_debug_msg(buf, sizeof(buf));
+	send_debug_msg(buf4, sizeof(buf2));
+#endif
+
+	if (count >= (count_thresh) && count <= (count_thresh + 1) && count != 0 && nir_found)
+	{
+#ifdef WIFI_DEBUGGING
+		char buf[32];
+		snprintf(buf, sizeof(buf), "DETECTED!!!!!!!!!!!");
+		send_debug_msg(buf, sizeof(buf));
+#endif
+		for (int i = 0; i < array_size; i++)
+		{
+			dist_array[i] = 1800.0;
+		}
+		return true;
+
+	}
+	return false;
+}
+
 bool detect_ballv3()
 {
 	const int array_size = 10;
@@ -256,7 +413,7 @@ bool detect_ballv3()
 		return false;
 	}
 
-	float ratio_thresh = -0.005 * lowest_reading + 4.3;
+	float ratio_thresh = -0.005 * lowest_reading + 3.8;
 
 	//right search
 	bool nir_found;
@@ -295,7 +452,10 @@ end:
 	}
 end2:
 	nir_found = nir_1 && nir_2;
-	int count_thresh = -0.0079 * lowest_reading + 5.6499;
+	//int count_thresh = -0.0079 * lowest_reading + 5.6499;
+	//int count_thresh = 0.00002 * pow(lowest_reading, 2) -0.0259 * lowest_reading + 9.373;
+	int count_thresh_low = 0.000005 * pow(lowest_reading, 2) - 0.0102 * lowest_reading + 4.995
+	int count_thresh = 0.00003 * pow(lowest_reading, 2) -0.0332* lowest_reading + 11.435;
 	count = count-1;
 #ifdef WIFI_DEBUGGING
 	char buf3[8] = "Value: ";
@@ -307,10 +467,10 @@ end2:
 	send_debug_msg(buf4, sizeof(buf2));
 #endif
 
-	if (count >= (count_thresh - 1) && count <= count_thresh && count != 0 && nir_found)
+	if (count >= (count_thresh_low) && count <= (count_thresh) && count != 0 && nir_found)
 	{
 #ifdef WIFI_DEBUGGING
-		char buf[64];
+		char buf[32];
 		snprintf(buf, sizeof(buf), "DETECTED!!!!!!!!!!!");
 		send_debug_msg(buf, sizeof(buf));
 #endif
@@ -324,146 +484,10 @@ end2:
 	return false;
 }
 
-
-bool detect_ball_fieldv2()
-{
-
-	static bool prev_in_range = false;
-	static int count = 0;
-	static float prev_reading = 0;
-	static float lowest_reading = 9000.0;
-	bool result = false;
-	int left_analog = take_average(LEFT_DIST_IR_PORT, 1);
-	bool curr_in_range =
-	check_within_range(left_analog, ir_sensor_min_value[LEFT_DIST_IR_TYPE], ir_sensor_max_value[LEFT_DIST_IR_TYPE]);
-	float ir_distance = convert_ir_reading_to_distance(LEFT_DIST_IR_TYPE, left_analog);
-#ifdef WIFI_DEBUGGING
-	char buf[96];
-	snprintf(buf, sizeof(buf), "ir_distance: %f, %f, %d, %f\n", ir_distance, prev_reading, count, lowest_reading);
-	send_debug_msg(buf, sizeof(buf));
-	writeDebugStreamLine(buf);
-#endif
-	if(curr_in_range && prev_in_range)
-	{
-		if (abs(ir_distance - prev_reading) >= DIST_IR_MIN_DIFF)
-		{
-			result = check_ball_threshold(count,lowest_reading);
-			count = 0;
-#ifdef WIFI_DEBUGGING
-			char buf[64];
-			snprintf(buf, sizeof(buf), "Both in range! Result: %d\n", result);
-			send_debug_msg(buf, sizeof(buf));
-			writeDebugStreamLine(buf);
-#endif
-		}
-		else
-		{
-			count = count + 1;
-			if (ir_distance < lowest_reading)
-			{
-				lowest_reading = ir_distance;
-			}
-#ifdef WIFI_DEBUGGING
-			char buf[64];
-			snprintf(buf, sizeof(buf), "Adding Count! Count: %d\n", count);
-			send_debug_msg(buf, sizeof(buf));
-			writeDebugStreamLine(buf);
-#endif
-			result = false;
-		}
-	}
-	else if (!curr_in_range && prev_in_range)
-	{
-		result = check_ball_threshold(count, lowest_reading);
-		count = 0;
-#ifdef WIFI_DEBUGGING
-		char buf[64];
-		snprintf(buf, sizeof(buf), "Exited Range! Result: %d\n", result);
-		send_debug_msg(buf, sizeof(buf));
-		writeDebugStreamLine(buf);
-#endif
-	}
-	else if (curr_in_range && !prev_in_range)
-	{
-		count = 1;
-		lowest_reading = ir_distance;
-		result = false;
-#ifdef WIFI_DEBUGGING
-		char buf[64];
-		snprintf(buf, sizeof(buf), "Detected Edge!");
-		send_debug_msg(buf, sizeof(buf));
-		writeDebugStreamLine(buf);
-#endif
-	}
-	else if (!curr_in_range && !prev_in_range)
-	{
-#ifdef WIFI_DEBUGGING
-		char buf[64];
-		snprintf(buf, sizeof(buf), "Nothing\n", count);
-		send_debug_msg(buf, sizeof(buf));
-		writeDebugStreamLine(buf);
-#endif
-		count = 0;
-		lowest_reading = 9000.0;
-		result = false;
-	}
-	prev_in_range = curr_in_range;
-	prev_reading = ir_distance;
-	return result;
-}
-
 int correction_time(float reading){
 
 	return reading/3 + 200;
 }
-// bool detect_ball_field(){
-// 	int left_analog = take_average(LEFT_DIST_IR_PORT, 4);
-// 	int right_analog = take_average(RIGHT_DIST_IR_PORT, 4);
-// 	float ir_distance = convert_ir_reading_to_distance(LEFT_DIST_IR_TYPE, left_analog);
-// 	float right_distance = convert_ir_reading_to_distance(RIGHT_DIST_IR_TYPE, right_analog);
-// 	bool right_withcurrently_in_range =
-// 	check_withcurrently_in_range(right_analog, ir_sensor_min_value[RIGHT_DIST_IR_TYPE], ir_sensor_max_value[RIGHT_DIST_IR_TYPE]);
-// 	bool curr_in_range =
-// 	check_withcurrently_in_range(left_analog, ir_sensor_min_value[LEFT_DIST_IR_TYPE], ir_sensor_max_value[LEFT_DIST_IR_TYPE]);
-// #ifdef WIFI_DEBUGGING
-// 	char buf[64];
-// 	snprintf(buf, sizeof(buf), "left distance: %f, right distance: %f\n",
-// 	ir_distance, right_distance);
-// 	send_debug_msg(buf, sizeof(buf));
-// #endif
-// 	//If one sensors detected a distance while the other didn't, probably a ball
-// 	if (!right_withcurrently_in_range != !curr_in_range)
-// 	{
-// #ifdef WIFI_DEBUGGING
-// 		send_debug_msg("Only one sensor\n", 24);
-// #endif
-// 		return true;
-// 	}
-
-// 	//Two distances are detected then we need to subtract the distance
-// 	else if (right_withcurrently_in_range && curr_in_range)
-// 	{
-
-// 		//If values are above a certain threshold, probably a ball, with robot behind
-// 		if (abs(right_distance - ir_distance) > DIST_IR_MIN_DIFF)
-// 		{
-// #ifdef WIFI_DEBUGGING
-// 			send_debug_msg("Dist Threshold\n", 24);
-// #endif
-// 			return true;
-// 		}
-// 		else
-// 		{
-// #ifdef WIFI_DEBUGGING
-// 			send_debug_msg("Nothing\n", 24);
-// #endif
-// 		}
-
-// 		//else is robot
-// 	}
-// 	// Detect nothing so just return false
-// 	return false;
-// }
 
 bool detect_ball_collector(){
 	return (SensorValue(BALL_LSWITCH_PORT) == 1);
@@ -595,47 +619,40 @@ task main()
 #endif
 	while (true)
 	{
-
+		char buf[128];
+		snprintf(buf, sizeof(buf), "Lft Dist IR: %d\n Rgt Dist IR: %d\n Frt Lft IR: %d\n "
+		"Frt Rgt IR: %d\n Bck Lft IR: %d\n Bck Rgt IR: %d\n ", SensorValue(LEFT_DIST_IR_PORT), SensorValue(RIGHT_DIST_IR_PORT),
+		SensorValue(FRT_LFT_REFL_IR_PORT), SensorValue(FRT_RGT_REFL_IR_PORT), SensorValue(BCK_LFT_REFL_IR_PORT), SensorValue(BCK_RGT_REFL_IR_PORT));
+		send_debug_msg(buf, sizeof(buf));
 		//int top_analog = take_average(LEFT_DIST_IR_PORT, 4);
 		//int bot_analog = take_average(RIGHT_DIST_IR_PORT, 4);
 		//float ir_distance = convert_ir_reading_to_distance(LEFT_DIST_IR_TYPE, top_analog) *
 		//check_withcurrently_in_range(top_analog, ir_sensor_min_value[(int)LEFT_DIST_IR_TYPE], ir_sensor_max_value[(int)LEFT_DIST_IR_TYPE]);
 		//float right_distance = convert_ir_reading_to_distance(RIGHT_DIST_IR_TYPE, bot_analog) *
 		//check_withcurrently_in_range(bot_analog, ir_sensor_min_value[(int)RIGHT_DIST_IR_TYPE], ir_sensor_max_value[(int)RIGHT_DIST_IR_TYPE]);
-		//writeDebugStreamLine("Top: %f,Btm: %f, Top Dist: %d, Bot Dist: %d", ir_distance, right_distance, top_analog, bot_analog);
+		//writeDebugStreamLine("LEft: %f,Right: %f, Top Dist: %d, Bot Dist: %d", ir_distance, right_distance, top_analog, bot_analog);
 
 		//detect_ball_field();
-		movement(direction1, 24);
-
-		lowest_reading = 9999;
-		if (detect_ballv3())
-		{
-			movement(CCLOCKWISE, 24);
-			delay(correction_time(lowest_reading));
-			movement(STRAIGHT, 100);
-			motor[port2] = 127;
-			delay(1000);
-			movement(STOP);
-			direction1 = STOP;
-		}
-		if (getChar(UART_PORT) == '1')
-		{
-			direction1 = CLOCKWISE;
-		}
-		else if (getChar(UART_PORT) == '0'){
-			direction1 = STOP;
-		}
-		//int door_analog = take_average(DOOR_DIST_IR_PORT, 4);
-		//float door_distance = convert_ir_reading_to_distance(DOOR_DIST_IR_TYPE, door_analog);
-		//writeDebugStreamLine("Door Dost: %f", door_distance);
-		//if (SensorValue(DOOR_LSWITCH_PORT) == 0)
-		//{
-		//	motor[DOOR_MOT_PORT] = -50;
-		//}
-		//else
-		//{
-		//	motor[DOOR_MOT_PORT] = 0;
-		//}
+		//	movement(direction1, 24);
+		//	//lowest_reading = 9999;
+		//	lowest_reading_1 = 9999;
+		//	if (detect_ballv4())
+		//	{
+		//		movement(CLOCKWISE, 24);
+		//		delay(500);
+		//		movement(STRAIGHT, 100);
+		//		motor[port2] = 127;
+		//		delay(lowest_reading / 100 * 1.5 * 1000);
+		//		movement(STOP);
+		//		direction1 = STOP;
+		//	}
+		//	if (getChar(UART_PORT) == '1')
+		//	{
+		//		direction1 = CLOCKWISE;
+		//	}
+		//	else if (getChar(UART_PORT) == '0'){
+		//		direction1 = STOP;
+		//	}
 		delay(50);
 	}
 }
