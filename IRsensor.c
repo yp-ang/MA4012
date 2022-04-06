@@ -57,12 +57,12 @@
 //Reflective Sensor Definitions
 #define FRT_LFT_REFL_IR_PORT in4
 #define FRT_RGT_REFL_IR_PORT in5
-#define FRT_LFT_REFL_IR_THRESHOLD 1500
-#define FRT_RGT_REFL_IR_THRESHOLD 1000
+#define FRT_LFT_REFL_IR_THRESHOLD 2550 //1500
+#define FRT_RGT_REFL_IR_THRESHOLD 1850
 #define BCK_LFT_REFL_IR_PORT in7
 #define BCK_RGT_REFL_IR_PORT in8
-#define BCK_LFT_REFL_IR_THRESHOLD 2000
-#define BCK_RGT_REFL_IR_THRESHOLD 800
+#define BCK_LFT_REFL_IR_THRESHOLD 2450
+#define BCK_RGT_REFL_IR_THRESHOLD 2100 //800
 
 //Compass Definitions
 #define NORTH_PORT dgtl3
@@ -371,7 +371,7 @@ bool align_ball()
 	snprintf(buf5, sizeof(buf5), "Al Val: %.2f, %.2f\n", center_distance, distance);
 	send_debug_msg(buf5, sizeof(buf5));
 #endif
-	if ((center_distance + 70.0) <=  distance * 0.9)
+	if ((center_distance + 70.0) <=  distance * 1.1) //0.9
 	{
 #ifdef WIFI_DEBUGGING
 		char buf[16];
@@ -636,11 +636,11 @@ void run_machine()
 		case ALIGN_BEARING:
 			if (determine_rotation_direction())
 			{
-					machine_direction = REVERSE;
-					machine_speed = 127;
-					return_ball = RETURN_TO_BASE;
-					prev_direction = STOP;
-					clearTimer(TIMER);
+				machine_direction = REVERSE;
+				machine_speed = 127;
+				return_ball = RETURN_TO_BASE;
+				prev_direction = STOP;
+				clearTimer(TIMER);
 			}
 			break;
 		case ALIGN_OFFSET:
@@ -734,47 +734,165 @@ void edge_detection()
 {
 	const int reverse_speed = 100;
 	const int rotate_speed = 100;
-	const int reverse_duration = 1000;
+	const int reverse_duration = 800;
 	const int turn_duration = 200;
-	if (machine_heading != REVERSE)
+	const int turn_duration_reverse =400;
+	//if (machine_heading != REVERSE)
+	//{
+	if (SensorValue(FRT_LFT_REFL_IR_PORT) >= FRT_LFT_REFL_IR_THRESHOLD)
 	{
-		if (SensorValue(FRT_LFT_REFL_IR_PORT) <= FRT_LFT_REFL_IR_THRESHOLD)
+		movement(REVERSE, reverse_speed);
+		delay(reverse_duration);
+		movement(CLOCKWISE, rotate_speed);
+		delay(turn_duration);
+		send_debug_msg("front left detected\n", 32);
+	}
+	else if (SensorValue(FRT_RGT_REFL_IR_PORT) >= FRT_RGT_REFL_IR_THRESHOLD)
+	{
+		movement(REVERSE, reverse_speed);
+		delay(reverse_duration);
+		movement(CCLOCKWISE, rotate_speed);
+		delay(turn_duration);
+		send_debug_msg("front right detected\n", 32);
+	}
+	//}
+	//if (machine_heading != STRAIGHT)
+	//{
+	else if (SensorValue(BCK_LFT_REFL_IR_PORT) >= BCK_LFT_REFL_IR_THRESHOLD)
+	{
+		movement(STRAIGHT, reverse_speed);
+		delay(reverse_duration);
+		movement(CCLOCKWISE, rotate_speed);
+		delay(turn_duration_reverse);
+		send_debug_msg("back left detected\n", 32);
+
+	}
+	else if (SensorValue(BCK_RGT_REFL_IR_PORT) >= BCK_RGT_REFL_IR_THRESHOLD)
+	{
+		movement(STRAIGHT, reverse_speed);
+		delay(reverse_duration);
+		movement(CLOCKWISE, rotate_speed);
+		delay(turn_duration_reverse);
+		send_debug_msg("back right detected\n", 32);
+	}
+	//}
+}
+
+
+bool is_wall()
+{
+	const int array_size = 10;
+	static float dist_array[array_size] = {1800.0, 1800.0, 1800.0, 1800.0,
+		1800.0, 1800.0, 1800.0, 1800.0, 1800.0, 1800.0};
+	int lowest_reading_index = 0;
+	int count = 0;
+	int center_analog = take_average(CENTER_DIST_IR_PORT, 1);
+	bool curr_in_range =
+	check_within_range(left_analog, ir_sensor_min_value[LEFT_DIST_IR_TYPE], ir_sensor_max_value[LEFT_DIST_IR_TYPE]);
+	float ir_distance = convert_ir_reading_to_distance(LEFT_DIST_IR_TYPE, left_analog);
+	lowest_reading = ir_distance;
+	for (int i = 0; i < array_size - 1; i++)
+	{
+		dist_array[i] = dist_array[i+1];
+	}
+	dist_array[array_size - 1] = ir_distance;
+#ifdef WIFI_DEBUGGING
+	char buf1[8] = "Start: ";
+	char buf2[8] = "\n";
+	send_debug_msg(buf1, sizeof(buf1));
+	for (int i = 0; i < array_size; i++)
+	{
+		char buf[16];
+		snprintf(buf, sizeof(buf), "%d, ", (int)dist_array[i]);
+		send_debug_msg(buf, sizeof(buf));
+	}
+	send_debug_msg(buf2, sizeof(buf2));
+#endif
+	for (int i = 0; i < array_size; i++)
+	{
+		if (dist_array[i] < lowest_reading)
 		{
-			movement(REVERSE, reverse_speed);
-			delay(reverse_duration);
-			movement(CLOCKWISE, rotate_speed);
-			delay(turn_duration);
-			send_debug_msg("front left detected\n", 32);
-		}
-		else if (SensorValue(FRT_RGT_REFL_IR_PORT) <= FRT_RGT_REFL_IR_THRESHOLD)
-		{
-			movement(REVERSE, reverse_speed);
-			delay(reverse_duration);
-			movement(CCLOCKWISE, rotate_speed);
-			delay(turn_duration);
-			send_debug_msg("front right detected\n", 32);
+			lowest_reading = dist_array[i];
+			lowest_reading_index = i;
 		}
 	}
-	if (machine_heading != STRAIGHT)
+
+	if (lowest_reading == 0  ||
+		check_within_range(lowest_reading, ir_sensor_min_value[LEFT_DIST_IR_TYPE],
+	ir_sensor_max_value[LEFT_DIST_IR_TYPE]))
 	{
-		if (SensorValue(BCK_LFT_REFL_IR_PORT) <= BCK_LFT_REFL_IR_THRESHOLD)
+		return false;
+	}
+
+	float ratio_thresh = -0.005 * lowest_reading + 3.8;
+
+	//right search
+	bool nir_found;
+	bool nir_1=false;
+	bool nir_2=false;
+	for (int i = lowest_reading_index; i < array_size; i++)
+	{
+		float ratio;
+		ratio = dist_array[i]/lowest_reading;
+		if (ratio <= ratio_thresh)
 		{
-			movement(STRAIGHT, reverse_speed);
-			delay(reverse_duration);
-			movement(CCLOCKWISE, rotate_speed);
-			delay(turn_duration);
-			send_debug_msg("back left detected\n", 32);
+			count = count + 1;
+		}
+		else
+		{
+			nir_1 = true;
+			goto end;
 
 		}
-		else if (SensorValue(BCK_RGT_REFL_IR_PORT) <= BCK_RGT_REFL_IR_THRESHOLD)
+	}
+end:
+	for (int i = lowest_reading_index; i >= 0; i--)
+	{
+		float ratio;
+		ratio = dist_array[i]/lowest_reading;
+		if (ratio <= ratio_thresh)
 		{
-			movement(STRAIGHT, reverse_speed);
-			delay(reverse_duration);
-			movement(CLOCKWISE, rotate_speed);
-			delay(turn_duration);
-			send_debug_msg("back right detected\n", 32);
+			count = count + 1;
+		}
+		else
+		{
+			nir_2 = true;
+			goto end2;
+
 		}
 	}
+end2:
+	nir_found = nir_1 && nir_2;
+	//int count_thresh = -0.0079 * lowest_reading + 5.6499;
+	//int count_thresh = 0.00002 * pow(lowest_reading, 2) -0.0259 * lowest_reading + 9.373;
+	int count_thresh_low = 0.000005 * pow(lowest_reading, 2) - 0.0102 * lowest_reading + 4.995
+	int count_thresh = 0.00003 * pow(lowest_reading, 2) -0.0332* lowest_reading + 11.435;
+	count = count-1;
+#ifdef WIFI_DEBUGGING
+	char buf3[8] = "Value: ";
+	char buf4[8] = "\n";
+	send_debug_msg(buf3, sizeof(buf1));
+	char buf[64];
+	snprintf(buf, sizeof(buf), "%f, %d, %d, %f ", ratio_thresh, count_thresh, count, lowest_reading);
+	send_debug_msg(buf, sizeof(buf));
+	send_debug_msg(buf4, sizeof(buf2));
+#endif
+
+	if (count >= (count_thresh_low) && count <= (count_thresh) && count != 0 && nir_found)
+	{
+#ifdef WIFI_DEBUGGING
+		char buf[32];
+		snprintf(buf, sizeof(buf), "DETECTED!!!!!!!!!!!");
+		send_debug_msg(buf, sizeof(buf));
+#endif
+		for (int i = 0; i < array_size; i++)
+		{
+			dist_array[i] = 1800.0;
+		}
+		return true;
+
+	}
+	return false;
 }
 
 task runMachine()
@@ -873,7 +991,18 @@ task main()
 			startTask(runMachine);
 			break;
 		}
+
+		/**
+		delay(700);
+		writeDebugStreamLine("Front Right reflective:%d", SensorValue(FRT_RGT_REFL_IR_PORT));
+		writeDebugStreamLine("Front Left reflective:%d", SensorValue(FRT_LFT_REFL_IR_PORT));
+		writeDebugStreamLine("Back Right reflective:%d", SensorValue(BCK_RGT_REFL_IR_PORT));
+		writeDebugStreamLine("Back Left reflective:%d", SensorValue(BCK_LFT_REFL_IR_PORT));
+		**/
 	}
+
+
+
 	while (1)
 	{
 	}
