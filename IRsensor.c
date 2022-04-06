@@ -264,9 +264,13 @@ bool detect_ballv4()
 	top_distance = convert_ir_reading_to_distance(RIGHT_DIST_IR_TYPE, right_analog);
 	bool right_curr_in_range =
 	check_within_range(top_distance, 0, 400);
+	int center_analog = take_average(CENTER_DIST_IR_PORT, 1);
+	center_distance = convert_ir_reading_to_distance(CENTER_DIST_IR_TYPE, center_analog);
+	bool center_curr_in_range =
+	check_within_range(btm_distance, 0, 400);
 
 #ifdef WIFI_DEBUGGING
-	char buf1[16] = " ";
+	char buf1[16];
 	snprintf(buf1, sizeof(buf1), "Value: %.2f, %.2f", btm_distance, top_distance);
 	send_debug_msg(buf1, sizeof(buf1));
 #endif
@@ -306,6 +310,10 @@ bool detect_ballv4()
 			snprintf(buf, sizeof(buf), "lft/rgt sdiff\n", btm_distance, top_distance);
 			send_debug_msg(buf, sizeof(buf));
 #endif
+			//if (btm_distance <= 10.0)
+			//{
+			//evasive manuevers?
+			//}
 			result = false;
 		}
 	}
@@ -341,14 +349,12 @@ bool align_ball()
 {
 	int center_analog = take_average(CENTER_DIST_IR_PORT, 1);
 	center_distance = convert_ir_reading_to_distance(CENTER_DIST_IR_TYPE, center_analog);
-	bool center_curr_in_range =
-	check_within_range(center_distance, 0, 400);
 #ifdef WIFI_DEBUGGING
 	char buf5[24];
 	snprintf(buf5, sizeof(buf5), "Al Val: %.2f, %.2f\n", center_distance, btm_distance);
 	send_debug_msg(buf5, sizeof(buf5));
 #endif
-	if (center_distance <= btm_distance * 1.5)
+	if (center_distance <= btm_distance * 1.25)
 	{
 #ifdef WIFI_DEBUGGING
 		char buf[16];
@@ -359,129 +365,6 @@ bool align_ball()
 	}
 	return false;
 }
-
-//bool detect_ballv3()
-//{
-//	const int array_size = 10;
-//	static float dist_array[array_size] = {1800.0, 1800.0, 1800.0, 1800.0,
-//		1800.0, 1800.0, 1800.0, 1800.0, 1800.0, 1800.0};
-
-//	int lowest_reading_index = 0;
-//	int count = 0;
-//	int left_analog = take_average(BTM_DIST_IR_PORT, 1);
-//	bool curr_in_range =
-//	check_within_range(left_analog, ir_sensor_min_value[LEFT_DIST_IR_TYPE], ir_sensor_max_value[LEFT_DIST_IR_TYPE]);
-//	float ir_distance = convert_ir_reading_to_distance(LEFT_DIST_IR_TYPE, left_analog);
-//	lowest_reading = ir_distance;
-//	for (int i = 0; i < array_size - 1; i++)
-//	{
-//		dist_array[i] = dist_array[i+1];
-//	}
-//	dist_array[array_size - 1] = ir_distance;
-//#ifdef WIFI_DEBUGGING
-//	char buf1[8] = "Start: ";
-//	char buf2[8] = "\n";
-//	send_debug_msg(buf1, sizeof(buf1));
-//	for (int i = 0; i < array_size; i++)
-//	{
-//		char buf[16];
-//		snprintf(buf, sizeof(buf), "%d, ", (int)dist_array[i]);
-//		send_debug_msg(buf, sizeof(buf));
-//	}
-//	send_debug_msg(buf2, sizeof(buf2));
-//#endif
-//	for (int i = 0; i < array_size; i++)
-//	{
-//		if (dist_array[i] < lowest_reading)
-//		{
-//			lowest_reading = dist_array[i];
-//			lowest_reading_index = i;
-//		}
-//	}
-
-//	if (lowest_reading == 0  ||
-//		check_within_range(lowest_reading, ir_sensor_min_value[LEFT_DIST_IR_TYPE],
-//	ir_sensor_max_value[LEFT_DIST_IR_TYPE]))
-//	{
-//		return false;
-//	}
-
-//	float ratio_thresh = -0.005 * lowest_reading + 3.8;
-
-//	//right search
-//	bool nir_found;
-//	bool nir_1=false;
-//	bool nir_2=false;
-//	for (int i = lowest_reading_index; i < array_size; i++)
-//	{
-//		float ratio;
-//		ratio = dist_array[i]/lowest_reading;
-//		if (ratio <= ratio_thresh)
-//		{
-//			count = count + 1;
-//		}
-//		else
-//		{
-//			nir_1 = true;
-//			goto end;
-
-//		}
-//	}
-//end:
-//	for (int i = lowest_reading_index; i >= 0; i--)
-//	{
-//		float ratio;
-//		ratio = dist_array[i]/lowest_reading;
-//		if (ratio <= ratio_thresh)
-//		{
-//			count = count + 1;
-//		}
-//		else
-//		{
-//			nir_2 = true;
-//			goto end2;
-
-//		}
-//	}
-//end2:
-//	nir_found = nir_1 && nir_2;
-//	//int count_thresh = -0.0079 * lowest_reading + 5.6499;
-//	//int count_thresh = 0.00002 * pow(lowest_reading, 2) -0.0259 * lowest_reading + 9.373;
-//	int count_thresh_low = 0.000005 * pow(lowest_reading, 2) - 0.0102 * lowest_reading + 4.995
-//	int count_thresh = 0.00003 * pow(lowest_reading, 2) -0.0332* lowest_reading + 11.435;
-//	count = count-1;
-//#ifdef WIFI_DEBUGGING
-//	char buf3[8] = "Value: ";
-//	char buf4[8] = "\n";
-//	send_debug_msg(buf3, sizeof(buf1));
-//	char buf[64];
-//	snprintf(buf, sizeof(buf), "%f, %d, %d, %f ", ratio_thresh, count_thresh, count, lowest_reading);
-//	send_debug_msg(buf, sizeof(buf));
-//	send_debug_msg(buf4, sizeof(buf2));
-//#endif
-
-//	if (count >= (count_thresh_low) && count <= (count_thresh) && count != 0 && nir_found)
-//	{
-//#ifdef WIFI_DEBUGGING
-//		char buf[32];
-//		snprintf(buf, sizeof(buf), "DETECTED!!!!!!!!!!!");
-//		send_debug_msg(buf, sizeof(buf));
-//#endif
-//		for (int i = 0; i < array_size; i++)
-//		{
-//			dist_array[i] = 1800.0;
-//		}
-//		return true;
-
-//	}
-//	return false;
-//}
-
-//int correction_time(float reading)
-//{
-
-//	return reading / 3 + 200;
-//}
 
 bool detect_ball_collector()
 {
@@ -575,7 +458,7 @@ void keep_door_closed()
 void goto_movetocenter()
 {
 	machine_direction = STRAIGHT;
-	machine_speed = 127;
+	machine_speed = 100;
 	motor[ROLLER_MOT_PORT] = 127;
 	clearTimer(TIMER);
 }
@@ -647,7 +530,6 @@ void goto_returnball()
 void run_machine()
 {
 	keep_door_closed();
-	static int count = 0;
 	switch (machine_mode)
 	{
 	case MOVE_TO_CENTER:
@@ -684,13 +566,13 @@ void run_machine()
 			{
 				send_debug_msg("Changing to MOVE_TO_NEW_POSITION", 48);
 				machine_direction = STRAIGHT;
-				machine_speed = 127;
+				machine_speed = 60;
 				search_ball = MOVE_TO_NEW_POSITION;
 				clearTimer(TIMER);
 			}
 			break;
 		case MOVE_TO_NEW_POSITION:
-			if (time1[TIMER] > 1500 )
+			if (time1[TIMER] > 1000 )
 			{
 				send_debug_msg("Changing to ROTATE", 48);
 				machine_direction = CCLOCKWISE;
@@ -718,7 +600,7 @@ void run_machine()
 			{
 				move_ball = MOVE_TOWARDS_BALL;
 				machine_direction = STRAIGHT;
-				machine_speed = 127;
+				machine_speed = 60;
 				clearTimer(TIMER);
 			}
 			break;
@@ -743,7 +625,7 @@ void run_machine()
 			if (determine_rotation_direction())
 			{
 				machine_direction = REVERSE;
-				machine_speed = 127;
+				machine_speed = 60;
 				return_ball = RETURN_TO_BASE;
 				clearTimer(TIMER);
 			}
@@ -803,10 +685,57 @@ void run_machine()
 	movement(machine_direction, machine_speed);
 }
 
+void edge_detection()
+{
+	const int reverse_speed = 100;
+	const int rotate_speed = 100;
+	const int reverse_duration = 800;
+	const int turn_duration = 800;
+	if (SensorValue(FRT_LFT_REFL_IR_PORT) <= FRT_LFT_REFL_IR_THRESHOLD)
+	{
+		movement(REVERSE, reverse_speed);
+		delay(reverse_duration);
+		movement(CLOCKWISE, rotate_speed);
+		delay(turn_duration);
+		send_debug_msg("front left detected\n", 32);
+	}
+	else if (SensorValue(FRT_RGT_REFL_IR_PORT) <= FRT_RGT_REFL_IR_THRESHOLD)
+	{
+		movement(REVERSE, reverse_speed);
+		delay(reverse_duration);
+		movement(CCLOCKWISE, rotate_speed);
+		delay(turn_duration);
+		send_debug_msg("front right detected\n", 32);
+	}
+	else if (SensorValue(BCK_LFT_REFL_IR_PORT) <= BCK_LFT_REFL_IR_THRESHOLD)
+	{
+		movement(STRAIGHT, reverse_speed);
+		delay(reverse_duration);
+		movement(CLOCKWISE, rotate_speed);
+		delay(turn_duration);
+		send_debug_msg("back left detected\n", 32);
+
+	}
+	else if (SensorValue(BCK_RGT_REFL_IR_PORT) <= BCK_RGT_REFL_IR_THRESHOLD)
+	{
+		movement(STRAIGHT, reverse_speed);
+		delay(reverse_duration);
+		movement(CCLOCKWISE, rotate_speed);
+		delay(turn_duration);
+		send_debug_msg("back right detected\n", 32);
+
+	}
+	else
+	{
+		send_debug_msg("nothing\n", 16);
+	}
+}
+
 task runMachine()
 {
 	while (1)
 	{
+		edge_detection();
 		run_machine();
 		wait1Msec(20);
 	}
@@ -814,45 +743,11 @@ task runMachine()
 
 task edgeDetection()
 {
-	const int reverse_speed = 100;
-	const int rotate_speed = 100;
-	while (1)
+	while(1)
 	{
-		bool front_left_detected = SensorValue(FRT_LFT_REFL_IR_PORT) <= FRT_LFT_REFL_IR_THRESHOLD;
-		bool front_right_detected = SensorValue(FRT_RGT_REFL_IR_PORT) <= FRT_RGT_REFL_IR_THRESHOLD;
-		bool back_left_detected = SensorValue(BCK_LFT_REFL_IR_PORT) <= BCK_LFT_REFL_IR_THRESHOLD;
-		bool back_right_detected = SensorValue(BCK_RGT_REFL_IR_PORT) <= BCK_RGT_REFL_IR_THRESHOLD;
-		if (front_left_detected)
-		{
-			movement(REVERSE, reverse_speed);
-			delay(300);
-			movement(CLOCKWISE, rotate_speed);
-			delay(300);
-			send_debug_msg("front left detected", 32);
-		}
-		else if (front_right_detected)
-		{
-			movement(REVERSE, reverse_speed);
-			delay(300);
-			movement(CCLOCKWISE, rotate_speed);
-			delay(300);
-			send_debug_msg("front right detected", 32);
-		}
-		else if (back_left_detected)
-		{
-			movement(STRAIGHT, reverse_speed);
-			delay(300);
-			movement(CLOCKWISE, rotate_speed);
-			delay(300);
-		}
-		else if (back_right_detected)
-		{
-			movement(STRAIGHT, reverse_speed);
-			delay(300);
-			movement(CCLOCKWISE, rotate_speed);
-			delay(300);
-		}
-		wait1Msec(200);
+		send_debug_msg("edge\n", 6);
+		edge_detection();
+		wait1Msec(50);
 	}
 }
 
@@ -867,37 +762,6 @@ task main()
 #ifdef CALIBRATION
 	while (true)
 	{
-		char* bearing_buf;
-		switch(get_heading())
-		{
-		case NORTH:
-			bearing_buf = "NORTH";
-			break;
-		case NORTHEAST:
-			bearing_buf = "NORTHEAST";
-			break;
-		case EAST:
-			bearing_buf = "EAST";
-			break;
-		case SOUTHEAST:
-			bearing_buf = "SOUTHEAST";
-			break;
-		case SOUTH:
-			bearing_buf = "SOUTH";
-			break;
-		case SOUTHWEST:
-			bearing_buf = "SOUTHWEST";
-			break;
-		case WEST:
-			bearing_buf = "WEST";
-			break;
-		case NORTHWEST:
-			bearing_buf = "NORTHWEST";
-			break;
-		default:
-			bearing_buf = "ERROR";
-			break;
-		}
 		//char buf[260];
 		//snprintf(buf, sizeof(buf), "Btm Dist IR: %d\n Top Dist IR: %d\n Center Dist IR: %d\n"
 		//"Front Left IR: %d\n Front Right IR: %d\n Back Left IR: %d\n Back Right IR: %d\n"
@@ -919,8 +783,42 @@ task main()
 		//#ifdef WIFI_DEBUGGING
 		//		send_debug_msg(buf, sizeof(buf));
 		//#endif
-		get_heading();
-		delay(1000);
+		//get_heading();
+		char buf[16];
+		char buf1[64];
+		bool front_left_detected = (SensorValue(FRT_LFT_REFL_IR_PORT) <= FRT_LFT_REFL_IR_THRESHOLD);
+		bool front_right_detected = (SensorValue(FRT_RGT_REFL_IR_PORT) <= FRT_RGT_REFL_IR_THRESHOLD);
+		bool back_left_detected = (SensorValue(BCK_LFT_REFL_IR_PORT) <= BCK_LFT_REFL_IR_THRESHOLD);
+		bool back_right_detected = (SensorValue(BCK_RGT_REFL_IR_PORT) <= BCK_RGT_REFL_IR_THRESHOLD);
+		snprintf(buf1, sizeof(buf1), "frt lft: %d, frt rgt: %d, bck lft: %d, bck rgt: %d\n", SensorValue(FRT_LFT_REFL_IR_PORT), SensorValue(FRT_RGT_REFL_IR_PORT),
+		SensorValue(BCK_LFT_REFL_IR_PORT), SensorValue(BCK_RGT_REFL_IR_PORT));
+		send_debug_msg(buf1, sizeof(buf1));
+		if (SensorValue(FRT_LFT_REFL_IR_PORT) <= FRT_LFT_REFL_IR_THRESHOLD)
+		{
+			snprintf(buf, sizeof(buf), "frt lft dect\n");
+			send_debug_msg(buf, sizeof(buf));
+		}
+		else if (SensorValue(FRT_RGT_REFL_IR_PORT) <= FRT_RGT_REFL_IR_THRESHOLD)
+		{
+			snprintf(buf, sizeof(buf), "frt rgt dect\n");
+			send_debug_msg(buf, sizeof(buf));
+		}
+		else if (SensorValue(BCK_LFT_REFL_IR_PORT) <= BCK_LFT_REFL_IR_THRESHOLD)
+		{
+			snprintf(buf, sizeof(buf), "bck lft dect\n");
+			send_debug_msg(buf, sizeof(buf));
+		}
+		else if (SensorValue(BCK_RGT_REFL_IR_PORT) <= BCK_RGT_REFL_IR_THRESHOLD)
+		{
+			snprintf(buf, sizeof(buf), "bck rgt dect\n");
+			send_debug_msg(buf, sizeof(buf));
+		}
+		else
+		{
+			snprintf(buf, sizeof(buf), "nothing\n");
+			send_debug_msg(buf, sizeof(buf));
+		}
+		delay(500);
 	}
 #else
 	while (true)
@@ -939,8 +837,8 @@ task main()
 				delay(500);
 			}
 			goto_movetocenter();
-			startTask(runMachine, kDefaultTaskPriority + 1);
-			startTask(edgeDetection);
+			//startTask(edgeDetection);
+			startTask(runMachine);
 			break;
 		}
 	}
@@ -948,58 +846,4 @@ task main()
 	{
 	}
 #endif
-	// while (true)
-	//{
-
-	//	//detect_ball_field();
-	//	movement(direction1, 24);
-
-	//	lowest_reading = 9999;
-	//	if (detect_ballv3())
-	//	{
-	//		movement(CCLOCKWISE, 24);
-	//		delay(correction_time(lowest_reading));
-	//		movement(STRAIGHT, 100);
-	//		motor[port2] = 127;
-	//		delay(1000);
-	//		movement(STOP);
-	//		direction1 = STOP;
-	//	}
-
-	//	if (getChar(UART_PORT) == '1')
-	//	{
-	//		direction1 = CLOCKWISE;
-	//	}
-	//	else if (getChar(UART_PORT) == '0'){
-	//		direction1 = STOP;
-	//	}
-	//	delay(50);
-	//}
-
-	// Don't remove
-	//while (1)
-	//{
-	//detect_ball_field();
-	//	movement(direction1, 24);
-	//	//lowest_reading = 9999;
-	//	lowest_reading_1 = 9999;
-	//	if (detect_ballv4())
-	//	{
-	//		movement(CLOCKWISE, 24);
-	//		delay(500);
-	//		movement(STRAIGHT, 100);
-	//		motor[port2] = 127;
-	//		delay(lowest_reading / 100 * 1.5 * 1000);
-	//		movement(STOP);
-	//		direction1 = STOP;
-	//	}
-	//	if (getChar(UART_PORT) == '1')
-	//	{
-	//		direction1 = CLOCKWISE;
-	//	}
-	//	else if (getChar(UART_PORT) == '0'){
-	//		direction1 = STOP;
-	//	}
-	//	delay(50);
-	//}
 }
