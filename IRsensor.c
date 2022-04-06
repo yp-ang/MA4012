@@ -57,12 +57,12 @@
 //Reflective Sensor Definitions
 #define FRT_LFT_REFL_IR_PORT in4
 #define FRT_RGT_REFL_IR_PORT in5
-#define FRT_LFT_REFL_IR_THRESHOLD 2550 //1500
-#define FRT_RGT_REFL_IR_THRESHOLD 1850
+#define FRT_LFT_REFL_IR_THRESHOLD 1500
+#define FRT_RGT_REFL_IR_THRESHOLD 1000
 #define BCK_LFT_REFL_IR_PORT in7
 #define BCK_RGT_REFL_IR_PORT in8
-#define BCK_LFT_REFL_IR_THRESHOLD 2450
-#define BCK_RGT_REFL_IR_THRESHOLD 2100 //800
+#define BCK_LFT_REFL_IR_THRESHOLD 2000
+#define BCK_RGT_REFL_IR_THRESHOLD 800
 
 //Compass Definitions
 #define NORTH_PORT dgtl3
@@ -739,7 +739,7 @@ void edge_detection()
 	const int turn_duration_reverse =400;
 	//if (machine_heading != REVERSE)
 	//{
-	if (SensorValue(FRT_LFT_REFL_IR_PORT) >= FRT_LFT_REFL_IR_THRESHOLD)
+	if (SensorValue(FRT_LFT_REFL_IR_PORT) <= FRT_LFT_REFL_IR_THRESHOLD)
 	{
 		movement(REVERSE, reverse_speed);
 		delay(reverse_duration);
@@ -747,7 +747,7 @@ void edge_detection()
 		delay(turn_duration);
 		send_debug_msg("front left detected\n", 32);
 	}
-	else if (SensorValue(FRT_RGT_REFL_IR_PORT) >= FRT_RGT_REFL_IR_THRESHOLD)
+	else if (SensorValue(FRT_RGT_REFL_IR_PORT) <= FRT_RGT_REFL_IR_THRESHOLD)
 	{
 		movement(REVERSE, reverse_speed);
 		delay(reverse_duration);
@@ -758,7 +758,7 @@ void edge_detection()
 	//}
 	//if (machine_heading != STRAIGHT)
 	//{
-	else if (SensorValue(BCK_LFT_REFL_IR_PORT) >= BCK_LFT_REFL_IR_THRESHOLD)
+	else if (SensorValue(BCK_LFT_REFL_IR_PORT) <= BCK_LFT_REFL_IR_THRESHOLD)
 	{
 		movement(STRAIGHT, reverse_speed);
 		delay(reverse_duration);
@@ -767,7 +767,7 @@ void edge_detection()
 		send_debug_msg("back left detected\n", 32);
 
 	}
-	else if (SensorValue(BCK_RGT_REFL_IR_PORT) >= BCK_RGT_REFL_IR_THRESHOLD)
+	else if (SensorValue(BCK_RGT_REFL_IR_PORT) <= BCK_RGT_REFL_IR_THRESHOLD)
 	{
 		movement(STRAIGHT, reverse_speed);
 		delay(reverse_duration);
