@@ -155,6 +155,7 @@ move_to_ball_seq move_ball = OFFSET;
 return_ball_seq return_ball = ALIGN_BEARING;
 bearing machine_heading = ERROR;
 direction machine_direction = STOP;
+direction prev_direction;
 float btm_distance, top_distance, center_distance;
 int machine_speed = 0;
 
@@ -370,7 +371,7 @@ bool align_ball()
 	snprintf(buf5, sizeof(buf5), "Al Val: %.2f, %.2f\n", center_distance, distance);
 	send_debug_msg(buf5, sizeof(buf5));
 #endif
-	if ((center_distance + 70.0) <=  distance * 1.35)
+	if ((center_distance + 70.0) <=  distance * 0.9)
 	{
 #ifdef WIFI_DEBUGGING
 		char buf[16];
@@ -497,6 +498,8 @@ bool determine_rotation_direction()
 	bearing current_heading = get_heading();
 	if (current_heading == machine_heading)
 	{
+		prev_direction = machine_direction;
+		machine_direction = CCLOCKWISE;
 		return true;
 	}
 	else
@@ -633,43 +636,55 @@ void run_machine()
 		case ALIGN_BEARING:
 			if (determine_rotation_direction())
 			{
-				send_debug_msg("YIPEEEEEE\n", 16);
-				return_ball = ALIGN_OFFSET;
-				clearTimer(TIMER);
+					machine_direction = REVERSE;
+					machine_speed = 127;
+					return_ball = RETURN_TO_BASE;
+					prev_direction = STOP;
+					clearTimer(TIMER);
 			}
 			break;
 		case ALIGN_OFFSET:
-			if (machine_direction == CLOCKWISE)
-			{
-				if (time1[TIMER] > 400)
-				{
-					machine_direction = REVERSE;
-					machine_speed = 127;
-					return_ball = RETURN_TO_BASE;
-					clearTimer(TIMER);
-				}
-			}
-			else if (machine_direction == CCLOCKWISE)
-			{
-				if (time1[TIMER] > 200)
-				{
-					machine_direction = REVERSE;
-					machine_speed = 127;
-					return_ball = RETURN_TO_BASE;
-					clearTimer(TIMER);
-				}
-			}
+			//if (prev_direction == CLOCKWISE)
+			//{
+			//	if (time1[TIMER] > 100)
+			//	{
+			//		machine_direction = REVERSE;
+			//		machine_speed = 127;
+			//		return_ball = RETURN_TO_BASE;
+			//		prev_direction = STOP;
+			//		clearTimer(TIMER);
+			//	}
+			//}
+			//else if (prev_direction == CCLOCKWISE)
+			//{
+			//	if (time1[TIMER] > 500)
+			//	{
+			//		machine_direction = REVERSE;
+			//		machine_speed = 127;
+			//		return_ball = RETURN_TO_BASE;
+			//		prev_direction = STOP;
+			//		clearTimer(TIMER);
+			//	}
+			//}
+			//else
+			//{
+			//	machine_direction = REVERSE;
+			//	machine_speed = 127;
+			//	return_ball = RETURN_TO_BASE;
+			//	clearTimer(TIMER);
+			//}
 			break;
 		case RETURN_TO_BASE:
-			if (time1[TIMER] > 5000 )
-			{
-				machine_direction = STRAIGHT;
-				machine_speed = 127;
-				return_ball = MOVE_FORWARD;
-				clearTimer(TIMER);
-			}
+			//if (time1[TIMER] > 5000)
+			//{
+			//	machine_direction = STRAIGHT;
+			//	machine_speed = 127;
+			//	return_ball = MOVE_FORWARD;
+			//	clearTimer(TIMER);
+			//}
 			if (detect_ball_deposit())
 			{
+				send_debug_msg("YIPEE2\n", 16);
 				machine_direction = STOP;
 				machine_speed = 0;
 				return_ball = DEPOSIT_BALL;
@@ -719,45 +734,46 @@ void edge_detection()
 {
 	const int reverse_speed = 100;
 	const int rotate_speed = 100;
-	const int reverse_duration = 800;
-	const int turn_duration = 300;
-	if (SensorValue(FRT_LFT_REFL_IR_PORT) <= FRT_LFT_REFL_IR_THRESHOLD)
+	const int reverse_duration = 1000;
+	const int turn_duration = 200;
+	if (machine_heading != REVERSE)
 	{
-		movement(REVERSE, reverse_speed);
-		delay(reverse_duration);
-		movement(CLOCKWISE, rotate_speed);
-		delay(turn_duration);
-		send_debug_msg("front left detected\n", 32);
+		if (SensorValue(FRT_LFT_REFL_IR_PORT) <= FRT_LFT_REFL_IR_THRESHOLD)
+		{
+			movement(REVERSE, reverse_speed);
+			delay(reverse_duration);
+			movement(CLOCKWISE, rotate_speed);
+			delay(turn_duration);
+			send_debug_msg("front left detected\n", 32);
+		}
+		else if (SensorValue(FRT_RGT_REFL_IR_PORT) <= FRT_RGT_REFL_IR_THRESHOLD)
+		{
+			movement(REVERSE, reverse_speed);
+			delay(reverse_duration);
+			movement(CCLOCKWISE, rotate_speed);
+			delay(turn_duration);
+			send_debug_msg("front right detected\n", 32);
+		}
 	}
-	else if (SensorValue(FRT_RGT_REFL_IR_PORT) <= FRT_RGT_REFL_IR_THRESHOLD)
+	if (machine_heading != STRAIGHT)
 	{
-		movement(REVERSE, reverse_speed);
-		delay(reverse_duration);
-		movement(CCLOCKWISE, rotate_speed);
-		delay(turn_duration);
-		send_debug_msg("front right detected\n", 32);
-	}
-	else if (SensorValue(BCK_LFT_REFL_IR_PORT) <= BCK_LFT_REFL_IR_THRESHOLD)
-	{
-		movement(STRAIGHT, reverse_speed);
-		delay(reverse_duration);
-		movement(CLOCKWISE, rotate_speed);
-		delay(turn_duration);
-		send_debug_msg("back left detected\n", 32);
+		if (SensorValue(BCK_LFT_REFL_IR_PORT) <= BCK_LFT_REFL_IR_THRESHOLD)
+		{
+			movement(STRAIGHT, reverse_speed);
+			delay(reverse_duration);
+			movement(CCLOCKWISE, rotate_speed);
+			delay(turn_duration);
+			send_debug_msg("back left detected\n", 32);
 
-	}
-	else if (SensorValue(BCK_RGT_REFL_IR_PORT) <= BCK_RGT_REFL_IR_THRESHOLD)
-	{
-		movement(STRAIGHT, reverse_speed);
-		delay(reverse_duration);
-		movement(CCLOCKWISE, rotate_speed);
-		delay(turn_duration);
-		send_debug_msg("back right detected\n", 32);
-
-	}
-	else
-	{
-		send_debug_msg("nothing\n", 16);
+		}
+		else if (SensorValue(BCK_RGT_REFL_IR_PORT) <= BCK_RGT_REFL_IR_THRESHOLD)
+		{
+			movement(STRAIGHT, reverse_speed);
+			delay(reverse_duration);
+			movement(CLOCKWISE, rotate_speed);
+			delay(turn_duration);
+			send_debug_msg("back right detected\n", 32);
+		}
 	}
 }
 
