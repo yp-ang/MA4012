@@ -134,6 +134,7 @@ enum move_to_ball_seq
 enum return_ball_seq
 {
 	ALIGN_BEARING,
+	ALIGN_OFFSET,
 	RETURN_TO_BASE,
 	MOVE_FORWARD,
 	TURN_RIGHT,
@@ -188,7 +189,7 @@ float convert_ir_reading_to_distance(ir_sensor sensor, int analog)
 	case ORANGE_PINK:
 		//return (-0.0004 * pow(analog, 4.0) + 0.0191 * pow(analog, 3.0) + 1.6462 * pow(analog, 2.0)
 		//- 113.29 * analog + 2533.4) * 10.0;
-		return 28899.0 * pow(analog, -1.077) * 10;
+		return 18417.0 * pow(analog, -0.942) * 10;
 		break;
 	case ORANGE_YELLOW:
 		//return (5 * pow(10, -12) * pow(analog, 4) - 4 * pow(10, -8) * pow(analog , 3) + 0.0001 * pow(analog, 2) - 0.1488 * analog + 87.392) * 10;
@@ -267,30 +268,38 @@ bool detect_ballv4()
 	int center_analog = take_average(CENTER_DIST_IR_PORT, 1);
 	center_distance = convert_ir_reading_to_distance(CENTER_DIST_IR_TYPE, center_analog);
 	bool center_curr_in_range =
-	check_within_range(btm_distance, 0, 400);
+	check_within_range(btm_distance, 0, 500);
 
 #ifdef WIFI_DEBUGGING
-	char buf1[16];
-	snprintf(buf1, sizeof(buf1), "Value: %.2f, %.2f", btm_distance, top_distance);
+	char buf1[32];
+	snprintf(buf1, sizeof(buf1), "Value: %.2f, %.2f, %.2f\n", btm_distance, top_distance, center_distance);
 	send_debug_msg(buf1, sizeof(buf1));
 #endif
 	if (!left_curr_in_range && !right_curr_in_range)
 	{
 #ifdef WIFI_DEBUGGING
 		char buf[16];
-		snprintf(buf, sizeof(buf), "lft/rgt nir\n", btm_distance, top_distance);
+		snprintf(buf, sizeof(buf), "lft/rgt nir\n");
 		send_debug_msg(buf, sizeof(buf));
 #endif
 		result = false;
 	}
 	else if (left_curr_in_range && !right_curr_in_range)
 	{
+		if (!center_curr_in_range || (center_distance - btm_distance) >= 30)
+		{
 #ifdef WIFI_DEBUGGING
-		char buf[16];
-		snprintf(buf, sizeof(buf), "lft ir, rgt nir\n", btm_distance, top_distance);
-		send_debug_msg(buf, sizeof(buf));
+			char buf[16];
+			snprintf(buf, sizeof(buf), "lft ir, rgt nir\n");
+			send_debug_msg(buf, sizeof(buf));
 #endif
-		result = true;
+			result = true;
+		}
+		else
+		{
+			result = false;
+		}
+
 	}
 	else if (right_curr_in_range && left_curr_in_range)
 	{
@@ -298,7 +307,7 @@ bool detect_ballv4()
 		{
 #ifdef WIFI_DEBUGGING
 			char buf[16];
-			snprintf(buf, sizeof(buf), "lft/rgt bdiff\n", btm_distance, top_distance);
+			snprintf(buf, sizeof(buf), "lft/rgt bdiff\n");
 			send_debug_msg(buf, sizeof(buf));
 #endif
 			result = true;
@@ -307,7 +316,7 @@ bool detect_ballv4()
 		{
 #ifdef WIFI_DEBUGGING
 			char buf[16];
-			snprintf(buf, sizeof(buf), "lft/rgt sdiff\n", btm_distance, top_distance);
+			snprintf(buf, sizeof(buf), "lft/rgt sdiff\n");
 			send_debug_msg(buf, sizeof(buf));
 #endif
 			//if (btm_distance <= 10.0)
@@ -321,7 +330,7 @@ bool detect_ballv4()
 	{
 #ifdef WIFI_DEBUGGING
 		char buf[16];
-		snprintf(buf, sizeof(buf), "other cons\n", btm_distance, top_distance);
+		snprintf(buf, sizeof(buf), "other cons\n");
 		send_debug_msg(buf, sizeof(buf));
 #endif
 		result = false;
@@ -334,7 +343,7 @@ bool detect_ballv4()
 			count = 0;
 #ifdef WIFI_DEBUGGING
 			char buf[16];
-			snprintf(buf, sizeof(buf), "!!DETECTED!!!\n", btm_distance, top_distance);
+			snprintf(buf, sizeof(buf), "!!DETECTED!!!\n");
 			send_debug_msg(buf, sizeof(buf));
 #endif
 			return true;
@@ -349,12 +358,19 @@ bool align_ball()
 {
 	int center_analog = take_average(CENTER_DIST_IR_PORT, 1);
 	center_distance = convert_ir_reading_to_distance(CENTER_DIST_IR_TYPE, center_analog);
+
+	//float x = pow(60.0, 2);
+	//float y = pow(btm_distance + 60.0, 2.0);
+	//float distance = pow( x + y , 0.5);
+	float x = pow(120.0, 2);
+	float y = pow(btm_distance + 140.0, 2.0);
+	float distance = pow( x + y , 0.5);
 #ifdef WIFI_DEBUGGING
 	char buf5[24];
-	snprintf(buf5, sizeof(buf5), "Al Val: %.2f, %.2f\n", center_distance, btm_distance);
+	snprintf(buf5, sizeof(buf5), "Al Val: %.2f, %.2f\n", center_distance, distance);
 	send_debug_msg(buf5, sizeof(buf5));
 #endif
-	if (center_distance <= btm_distance * 1.25)
+	if ((center_distance + 70.0) <=  distance * 1.35)
 	{
 #ifdef WIFI_DEBUGGING
 		char buf[16];
@@ -481,14 +497,7 @@ bool determine_rotation_direction()
 	bearing current_heading = get_heading();
 	if (current_heading == machine_heading)
 	{
-		//machine_direction = REVERSE;
-		//machine_speed = 127;
-		//return_ball = RETURN_TO_BASE;
-		//clearTimer(TIMER);
-		//return true;
-		machine_direction = STOP;
-		machine_speed = 127;
-		return false;
+		return true;
 	}
 	else
 	{
@@ -533,7 +542,7 @@ void run_machine()
 	switch (machine_mode)
 	{
 	case MOVE_TO_CENTER:
-		if (time1[TIMER] > 3000)
+		if (time1[TIMER] > 4000)
 		{
 			goto_searchforball();
 		}
@@ -619,19 +628,40 @@ void run_machine()
 		break;
 	case RETURN_THE_BALL:
 		motor[ROLLER_MOT_PORT] = -40;
-		switch (machine_return_ball_seq)
+		switch (return_ball)
 		{
 		case ALIGN_BEARING:
 			if (determine_rotation_direction())
 			{
-				machine_direction = REVERSE;
-				machine_speed = 60;
-				return_ball = RETURN_TO_BASE;
+				send_debug_msg("YIPEEEEEE\n", 16);
+				return_ball = ALIGN_OFFSET;
 				clearTimer(TIMER);
 			}
 			break;
+		case ALIGN_OFFSET:
+			if (machine_direction == CLOCKWISE)
+			{
+				if (time1[TIMER] > 400)
+				{
+					machine_direction = REVERSE;
+					machine_speed = 127;
+					return_ball = RETURN_TO_BASE;
+					clearTimer(TIMER);
+				}
+			}
+			else if (machine_direction == CCLOCKWISE)
+			{
+				if (time1[TIMER] > 200)
+				{
+					machine_direction = REVERSE;
+					machine_speed = 127;
+					return_ball = RETURN_TO_BASE;
+					clearTimer(TIMER);
+				}
+			}
+			break;
 		case RETURN_TO_BASE:
-			if (time1[TIMER] > 4000 )
+			if (time1[TIMER] > 5000 )
 			{
 				machine_direction = STRAIGHT;
 				machine_speed = 127;
@@ -690,7 +720,7 @@ void edge_detection()
 	const int reverse_speed = 100;
 	const int rotate_speed = 100;
 	const int reverse_duration = 800;
-	const int turn_duration = 800;
+	const int turn_duration = 300;
 	if (SensorValue(FRT_LFT_REFL_IR_PORT) <= FRT_LFT_REFL_IR_THRESHOLD)
 	{
 		movement(REVERSE, reverse_speed);
@@ -784,41 +814,27 @@ task main()
 		//		send_debug_msg(buf, sizeof(buf));
 		//#endif
 		//get_heading();
-		char buf[16];
-		char buf1[64];
-		bool front_left_detected = (SensorValue(FRT_LFT_REFL_IR_PORT) <= FRT_LFT_REFL_IR_THRESHOLD);
-		bool front_right_detected = (SensorValue(FRT_RGT_REFL_IR_PORT) <= FRT_RGT_REFL_IR_THRESHOLD);
-		bool back_left_detected = (SensorValue(BCK_LFT_REFL_IR_PORT) <= BCK_LFT_REFL_IR_THRESHOLD);
-		bool back_right_detected = (SensorValue(BCK_RGT_REFL_IR_PORT) <= BCK_RGT_REFL_IR_THRESHOLD);
-		snprintf(buf1, sizeof(buf1), "frt lft: %d, frt rgt: %d, bck lft: %d, bck rgt: %d\n", SensorValue(FRT_LFT_REFL_IR_PORT), SensorValue(FRT_RGT_REFL_IR_PORT),
-		SensorValue(BCK_LFT_REFL_IR_PORT), SensorValue(BCK_RGT_REFL_IR_PORT));
+		motor[ROLLER_MOT_PORT] = 127;
+		int left_analog = take_average(BTM_DIST_IR_PORT, 1);
+		btm_distance = convert_ir_reading_to_distance(LEFT_DIST_IR_TYPE, left_analog);
+		bool left_curr_in_range =
+		check_within_range(btm_distance, 0, 400);
+		lowest_reading = btm_distance;
+		int right_analog = take_average(TOP_DIST_IR_PORT, 1);
+		top_distance = convert_ir_reading_to_distance(RIGHT_DIST_IR_TYPE, right_analog);
+		bool right_curr_in_range =
+		check_within_range(top_distance, 0, 400);
+		int center_analog = take_average(CENTER_DIST_IR_PORT, 1);
+		center_distance = convert_ir_reading_to_distance(CENTER_DIST_IR_TYPE, center_analog);
+		bool center_curr_in_range =
+		check_within_range(btm_distance, 0, 400);
+
+#ifdef WIFI_DEBUGGING
+		char buf1[32];
+		snprintf(buf1, sizeof(buf1), "Value: %.2f, %.2f, %.2f\n", left_analog, right_analog, center_analog);
 		send_debug_msg(buf1, sizeof(buf1));
-		if (SensorValue(FRT_LFT_REFL_IR_PORT) <= FRT_LFT_REFL_IR_THRESHOLD)
-		{
-			snprintf(buf, sizeof(buf), "frt lft dect\n");
-			send_debug_msg(buf, sizeof(buf));
-		}
-		else if (SensorValue(FRT_RGT_REFL_IR_PORT) <= FRT_RGT_REFL_IR_THRESHOLD)
-		{
-			snprintf(buf, sizeof(buf), "frt rgt dect\n");
-			send_debug_msg(buf, sizeof(buf));
-		}
-		else if (SensorValue(BCK_LFT_REFL_IR_PORT) <= BCK_LFT_REFL_IR_THRESHOLD)
-		{
-			snprintf(buf, sizeof(buf), "bck lft dect\n");
-			send_debug_msg(buf, sizeof(buf));
-		}
-		else if (SensorValue(BCK_RGT_REFL_IR_PORT) <= BCK_RGT_REFL_IR_THRESHOLD)
-		{
-			snprintf(buf, sizeof(buf), "bck rgt dect\n");
-			send_debug_msg(buf, sizeof(buf));
-		}
-		else
-		{
-			snprintf(buf, sizeof(buf), "nothing\n");
-			send_debug_msg(buf, sizeof(buf));
-		}
-		delay(500);
+#endif
+		delay(30);
 	}
 #else
 	while (true)
