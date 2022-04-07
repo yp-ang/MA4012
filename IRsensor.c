@@ -787,20 +787,42 @@ void edge_detection()
 	}
 	else if (SensorValue(BCK_LFT_REFL_IR_PORT) <= BCK_LFT_REFL_IR_THRESHOLD)
 	{
-		movement(STRAIGHT, reverse_speed);
-		delay(reverse_duration);
-		movement(CCLOCKWISE, rotate_speed);
-		delay(turn_duration_reverse);
-		send_debug_msg("back left detected\n", 32);
-
+		if (machine_mode == RETURN_THE_BALL  && return_ball ==  RETURN_TO_BASE)
+		{
+			movement(STRAIGHT, reverse_speed);
+			delay(reverse_duration - 100);
+			movement(CCLOCKWISE, rotate_speed);
+			delay(turn_duration_reverse + 100);
+			send_debug_msg("back left detected\n", 32);
+		}
+		else
+		{
+			movement(STRAIGHT, reverse_speed);
+			delay(reverse_duration);
+			movement(CCLOCKWISE, rotate_speed);
+			delay(turn_duration_reverse);
+			send_debug_msg("back left detected\n", 32);
+		}
 	}
 	else if (SensorValue(BCK_RGT_REFL_IR_PORT) <= BCK_RGT_REFL_IR_THRESHOLD)
 	{
-		movement(STRAIGHT, reverse_speed);
-		delay(reverse_duration);
-		movement(CLOCKWISE, rotate_speed);
-		delay(turn_duration_reverse);
-		send_debug_msg("back right detected\n", 32);
+		if (machine_mode == RETURN_THE_BALL  && return_ball ==  RETURN_TO_BASE)
+		{
+			movement(STRAIGHT, reverse_speed);
+			delay(reverse_duration - 100);
+			movement(CLOCKWISE, rotate_speed);
+			delay(turn_duration_reverse + 100);
+			send_debug_msg("back right detected\n", 32);
+		}
+		else
+		{
+			movement(STRAIGHT, reverse_speed);
+			delay(reverse_duration);
+			movement(CLOCKWISE, rotate_speed);
+			delay(turn_duration_reverse);
+			send_debug_msg("back right detected\n", 32);
+		}
+
 	}
 }
 
