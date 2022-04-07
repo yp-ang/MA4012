@@ -118,7 +118,8 @@ enum mode
 	MOVE_TO_CENTER,
 	SEARCH_FOR_BALL,
 	MOVE_TO_BALL,
-	RETURN_THE_BALL
+	RETURN_THE_BALL,
+	RESET
 };
 enum search_ball_seq
 {
@@ -253,10 +254,90 @@ float clamp(float d, float min, float max)
 	return t > max ? max : t;
 }
 
+enum bearing get_heading()
+{
+	int heading = 0;
+	heading = heading + (SensorValue(NORTH_PORT) == 0) + (SensorValue(EAST_PORT) == 0) * 2 +
+	(SensorValue(SOUTH_PORT) == 0) * 4 + (SensorValue(WEST_PORT) == 0) * 8;
+	char buf[16];
+	switch (heading)
+	{
+	case 1:
+#ifdef WIFI_DEBUGGING
+		snprintf(buf, sizeof(buf), "NORTH\n");
+		send_debug_msg(buf, sizeof(buf));
+#endif
+		return NORTH;
+		break;
+	case 3:
+
+#ifdef WIFI_DEBUGGING
+		snprintf(buf, sizeof(buf), "NORTHEAST\n");
+		send_debug_msg(buf, sizeof(buf));
+#endif
+		return NORTHEAST;
+		break;
+	case 2:
+
+#ifdef WIFI_DEBUGGING
+		snprintf(buf, sizeof(buf), "EAST\n");
+		send_debug_msg(buf, sizeof(buf));
+#endif
+		return EAST;
+		break;
+	case 6:
+
+#ifdef WIFI_DEBUGGING
+		snprintf(buf, sizeof(buf), "SOUTHEAST\n");
+		send_debug_msg(buf, sizeof(buf));
+#endif
+		return SOUTHEAST;
+		break;
+	case 4:
+
+#ifdef WIFI_DEBUGGING
+		snprintf(buf, sizeof(buf), "SOUTH\n");
+		send_debug_msg(buf, sizeof(buf));
+#endif
+		return SOUTH;
+		break;
+	case 12:
+
+#ifdef WIFI_DEBUGGING
+		snprintf(buf, sizeof(buf), "SOUTHWEST\n");
+		send_debug_msg(buf, sizeof(buf));
+#endif
+		return SOUTHWEST;
+		break;
+	case 8:
+
+#ifdef WIFI_DEBUGGING
+		snprintf(buf, sizeof(buf), "WEST\n");
+		send_debug_msg(buf, sizeof(buf));
+#endif
+		return WEST;
+		break;
+	case 9:
+#ifdef WIFI_DEBUGGING
+		snprintf(buf, sizeof(buf), "NORTHWEST\n");
+		send_debug_msg(buf, sizeof(buf));
+#endif
+		return NORTHWEST;
+		break;
+	default:
+#ifdef WIFI_DEBUGGING
+		snprintf(buf, sizeof(buf), "ERROR\n");
+		send_debug_msg(buf, sizeof(buf));
+#endif
+		return ERROR;
+	}
+}
+
 bool detect_ballv4()
 {
 	bool result = false;
 	static int count = 0;
+	static int heading_count = 0;
 	int left_analog = take_average(BTM_DIST_IR_PORT, 1);
 	btm_distance = convert_ir_reading_to_distance(LEFT_DIST_IR_TYPE, left_analog);
 	bool left_curr_in_range =
@@ -347,6 +428,21 @@ bool detect_ballv4()
 			snprintf(buf, sizeof(buf), "!!DETECTED!!!\n");
 			send_debug_msg(buf, sizeof(buf));
 #endif
+			bearing measured_heading = get_heading();
+			if (measured_heading == NORTH || measured_heading == NORTHEAST || measured_heading == NORTHWEST)
+			{
+				heading_count = heading_count + 1;
+			}
+			else
+			{
+				heading_count = 0;
+			}
+			if (heading_count >= 3)
+			{
+				heading_count = 0;
+				machine_mode = RESET;
+				return false;
+			}
 			return true;
 		}
 		return false;
@@ -386,85 +482,6 @@ bool align_ball()
 bool detect_ball_collector()
 {
 	return (SensorValue(BALL_LSWITCH_PORT) == 1);
-}
-
-enum bearing get_heading()
-{
-	int heading = 0;
-	heading = heading + (SensorValue(NORTH_PORT) == 0) + (SensorValue(EAST_PORT) == 0) * 2 +
-	(SensorValue(SOUTH_PORT) == 0) * 4 + (SensorValue(WEST_PORT) == 0) * 8;
-	char buf[16];
-	switch (heading)
-	{
-	case 1:
-#ifdef WIFI_DEBUGGING
-		snprintf(buf, sizeof(buf), "NORTH\n");
-		send_debug_msg(buf, sizeof(buf));
-#endif
-		return NORTH;
-		break;
-	case 3:
-
-#ifdef WIFI_DEBUGGING
-		snprintf(buf, sizeof(buf), "NORTHEAST\n");
-		send_debug_msg(buf, sizeof(buf));
-#endif
-		return NORTHEAST;
-		break;
-	case 2:
-
-#ifdef WIFI_DEBUGGING
-		snprintf(buf, sizeof(buf), "EAST\n");
-		send_debug_msg(buf, sizeof(buf));
-#endif
-		return EAST;
-		break;
-	case 6:
-
-#ifdef WIFI_DEBUGGING
-		snprintf(buf, sizeof(buf), "SOUTHEAST\n");
-		send_debug_msg(buf, sizeof(buf));
-#endif
-		return SOUTHEAST;
-		break;
-	case 4:
-
-#ifdef WIFI_DEBUGGING
-		snprintf(buf, sizeof(buf), "SOUTH\n");
-		send_debug_msg(buf, sizeof(buf));
-#endif
-		return SOUTH;
-		break;
-	case 12:
-
-#ifdef WIFI_DEBUGGING
-		snprintf(buf, sizeof(buf), "SOUTHWEST\n");
-		send_debug_msg(buf, sizeof(buf));
-#endif
-		return SOUTHWEST;
-		break;
-	case 8:
-
-#ifdef WIFI_DEBUGGING
-		snprintf(buf, sizeof(buf), "WEST\n");
-		send_debug_msg(buf, sizeof(buf));
-#endif
-		return WEST;
-		break;
-	case 9:
-#ifdef WIFI_DEBUGGING
-		snprintf(buf, sizeof(buf), "NORTHWEST\n");
-		send_debug_msg(buf, sizeof(buf));
-#endif
-		return NORTHWEST;
-		break;
-	default:
-#ifdef WIFI_DEBUGGING
-		snprintf(buf, sizeof(buf), "ERROR\n");
-		send_debug_msg(buf, sizeof(buf));
-#endif
-		return ERROR;
-	}
 }
 
 void keep_door_closed()
@@ -605,7 +622,7 @@ void run_machine()
 		switch (move_ball)
 		{
 		case OFFSET:
-			if (time1[TIMER] > 1000)
+			if (time1[TIMER] > 1500)
 			{
 				goto_searchforball();
 			}
@@ -683,13 +700,21 @@ void run_machine()
 			//	return_ball = MOVE_FORWARD;
 			//	clearTimer(TIMER);
 			//}
-			if (detect_ball_deposit())
 			{
-				send_debug_msg("YIPEE2\n", 16);
-				machine_direction = STOP;
-				machine_speed = 0;
-				return_ball = DEPOSIT_BALL;
-				clearTimer(TIMER);
+				bearing measured_heading = get_heading();
+				if (!(measured_heading == SOUTH || measured_heading == SOUTHEAST || measured_heading == SOUTHWEST))
+				{
+					goto_returnball();
+					break;
+				}
+				if (detect_ball_deposit())
+				{
+					send_debug_msg("YIPEE2\n", 16);
+					machine_direction = STOP;
+					machine_speed = 0;
+					return_ball = DEPOSIT_BALL;
+					clearTimer(TIMER);
+				}
 			}
 			break;
 		case DEPOSIT_BALL:
@@ -723,6 +748,12 @@ void run_machine()
 				goto_returnball();
 			}
 			break;
+		}
+		break;
+	case RESET:
+		if (determine_rotation_direction())
+		{
+			goto_movetocenter();
 		}
 		break;
 	default:
