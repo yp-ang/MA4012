@@ -49,6 +49,8 @@
 #define BTM_DIST_IR_PORT in2
 #define CENTER_DIST_IR_TYPE ORANGE_PINK
 #define CENTER_DIST_IR_PORT in3
+#define DOOR_DIST_IR_TYPE ORANGE_BLUE
+#define DOOR_DIST_IR_PORT in6
 #define DOOR_DIST_IR_THRESHOLD 130.0 //in mm
 #define DIST_IR_MAX_DIFF 68.0 //in mm
 #define DIST_IR_MIN_DIFF 150.0 //in mm
@@ -72,7 +74,7 @@
 #define COMPASS_SWING_DURATION 3000
 
 // Utils
-#define WIFI_DEBUGGING 0
+//#define WIFI_DEBUGGING 0
 
 //Only allow CALIBRATION or TESTING one at a time
 //#define CALIBRATION 0
@@ -811,7 +813,7 @@ void edge_detection()
 			movement(STRAIGHT, reverse_speed);
 			delay(reverse_duration - 100);
 			movement(CLOCKWISE, rotate_speed);
-			delay(turn_duration_reverse + 100);
+			delay(turn_duration_reverse + 50);
 			send_debug_msg("back right detected\n", 32);
 		}
 		else
@@ -879,24 +881,35 @@ task main()
 		//		send_debug_msg(buf, sizeof(buf));
 		//#endif
 		//get_heading();
-		motor[ROLLER_MOT_PORT] = 127;
-		int left_analog = take_average(BTM_DIST_IR_PORT, 1);
-		btm_distance = convert_ir_reading_to_distance(LEFT_DIST_IR_TYPE, left_analog);
-		bool left_curr_in_range =
-		check_within_range(btm_distance, 0, 400);
-		lowest_reading = btm_distance;
-		int right_analog = take_average(TOP_DIST_IR_PORT, 1);
-		top_distance = convert_ir_reading_to_distance(RIGHT_DIST_IR_TYPE, right_analog);
-		bool right_curr_in_range =
-		check_within_range(top_distance, 0, 400);
-		int center_analog = take_average(CENTER_DIST_IR_PORT, 1);
-		center_distance = convert_ir_reading_to_distance(CENTER_DIST_IR_TYPE, center_analog);
+		//motor[ROLLER_MOT_PORT] = 127;
+		//int left_analog = take_average(BTM_DIST_IR_PORT, 1);
+		//btm_distance = convert_ir_reading_to_distance(LEFT_DIST_IR_TYPE, left_analog);
+		//bool left_curr_in_range =
+		//check_within_range(btm_distance, 0, 400);
+		//lowest_reading = btm_distance;
+		//int right_analog = take_average(TOP_DIST_IR_PORT, 1);
+		//top_distance = convert_ir_reading_to_distance(RIGHT_DIST_IR_TYPE, right_analog);
+		//bool right_curr_in_range =
+		//check_within_range(top_distance, 0, 400);
+		//int center_analog = take_average(CENTER_DIST_IR_PORT, 1);
+		//center_distance = convert_ir_reading_to_distance(CENTER_DIST_IR_TYPE, center_analog);
+		//bool center_curr_in_range =
+		//check_within_range(btm_distance, 0, 400);
+
+		//#ifdef WIFI_DEBUGGING
+		//		char buf1[32];
+		//		snprintf(buf1, sizeof(buf1), "Value: %.2f, %.2f, %.2f\n", left_analog, right_analog, center_analog);
+		//		send_debug_msg(buf1, sizeof(buf1));
+		//#endif
+		keep_door_closed();
+		int door_analog = take_average(DOOR_DIST_IR_PORT, 1);
+		float door_distance = convert_ir_reading_to_distance(DOOR_DIST_IR_TYPE, door_analog);
 		bool center_curr_in_range =
 		check_within_range(btm_distance, 0, 400);
 
 #ifdef WIFI_DEBUGGING
 		char buf1[32];
-		snprintf(buf1, sizeof(buf1), "Value: %.2f, %.2f, %.2f\n", left_analog, right_analog, center_analog);
+		snprintf(buf1, sizeof(buf1), "Value: %d, %.2f\n", door_analog, door_distance);
 		send_debug_msg(buf1, sizeof(buf1));
 #endif
 		delay(30);
