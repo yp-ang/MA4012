@@ -57,14 +57,24 @@
 #define LEFT_DIST_IR_OFFSET 70.0//
 
 //Reflective Sensor Definitions
+/*
+front left normal = 2400 on alluminium = 2700 yellow = 200
+front right normal = on alluminium = yellow =
+back left normal = on alluminium = yellow =
+back right normal = on alluminium =  yellow =
+*/
 #define FRT_LFT_REFL_IR_PORT in4
 #define FRT_RGT_REFL_IR_PORT in5
 #define FRT_LFT_REFL_IR_THRESHOLD 1500
+#define FRT_LFT_BLACK_THRESHOLD 2600
 #define FRT_RGT_REFL_IR_THRESHOLD 1000
+#define FRT_RGT_BLACK_THRESHOLD 1800
 #define BCK_LFT_REFL_IR_PORT in7
 #define BCK_RGT_REFL_IR_PORT in8
 #define BCK_LFT_REFL_IR_THRESHOLD 2000
+#define BCK_LFT_BLACK_THRESHOLD 2700
 #define BCK_RGT_REFL_IR_THRESHOLD 800
+#define BCK_RGT_BLACK_THRESHOLD 1800
 
 //Compass Definitions
 #define NORTH_PORT dgtl3
@@ -73,10 +83,10 @@
 #define WEST_PORT dgtl6
 
 // Utils
-#define WIFI_DEBUGGING 0
+//#define WIFI_DEBUGGING 0
 
 //Only allow CALIBRATION or TESTING one at a time
-#define CALIBRATION 0
+//#define CALIBRATION 0
 //#define TESTING 0
 #define UART_PORT uartOne
 #define TIMER T1
@@ -130,6 +140,7 @@ enum move_to_ball_seq
 	OFFSET,
 	MOVE_TOWARDS_BALL
 };
+
 enum return_ball_seq
 {
 	ALIGN_BEARING,
@@ -141,6 +152,13 @@ enum return_ball_seq
 	DEPOSIT_BALL
 };
 
+enum reset_ball_seq
+{
+	REVERSE_AWAY,
+	ALIGN_TO_SOUTH
+};
+
+
 /*Thresholds are at 10-60cm as the anything above 60cm for the 10-80cm sensors is just too bad
 For 4-30cm, threshold taken at 30cm
 */
@@ -151,6 +169,7 @@ mode machine_mode = MOVE_TO_CENTER;
 search_ball_seq search_ball = ROTATE;
 move_to_ball_seq move_ball = OFFSET;
 return_ball_seq return_ball = ALIGN_BEARING;
+reset_ball_seq reset_ball = REVERSE_AWAY;
 bearing machine_heading = ERROR;
 direction machine_direction = STOP;
 direction prev_direction;
@@ -437,6 +456,10 @@ bool detect_ballv4()
 			{
 				heading_count = 0;
 				machine_mode = RESET;
+				reset_ball = REVERSE_AWAY;
+				machine_direction = REVERSE;
+				machine_speed = 127;
+				clearTimer(TIMER);
 				return false;
 			}
 			return true;
@@ -485,7 +508,7 @@ void goto_movetocenter()
 {
 	machine_mode = MOVE_TO_CENTER;
 	machine_direction = STRAIGHT;
-	machine_speed = 100;
+	machine_speed = 127;
 	motor[ROLLER_MOT_PORT] = 127;
 	clearTimer(TIMER);
 }
@@ -555,7 +578,7 @@ void run_machine()
 	switch (machine_mode)
 	{
 	case MOVE_TO_CENTER:
-		if (time1[TIMER] > 4000)
+		if (time1[TIMER] > 3300)
 		{
 			goto_searchforball();
 		}
@@ -593,7 +616,7 @@ void run_machine()
 		switch (search_ball)
 		{
 		case ROTATE:
-			if (time1[TIMER] > 4000)
+			if (time1[TIMER] > 3100)
 			{
 				send_debug_msg("Changing to MOVE_TO_NEW_POSITION", 48);
 				machine_direction = STRAIGHT;
@@ -603,15 +626,20 @@ void run_machine()
 			}
 			break;
 		case MOVE_TO_NEW_POSITION:
-			if (time1[TIMER] > 1000 )
 			{
-				send_debug_msg("Changing to ROTATE", 48);
-				machine_direction = CCLOCKWISE;
-				machine_speed = 24;
-				search_ball = ROTATE;
-				clearTimer(TIMER);
+				bearing curr_bearing = get_heading();
+				int duration = 1000 * (curr_bearing == NORTH || curr_bearing == NORTHEAST || curr_bearing == NORTHWEST);
+				if (time1[TIMER] > (1000 + duration))
+				{
+					send_debug_msg("Changing to ROTATE", 48);
+					machine_direction = CCLOCKWISE;
+					machine_speed = 28;
+					search_ball = ROTATE;
+					clearTimer(TIMER);
+				}
+				break;
 			}
-			break;
+
 		}
 		break;
 	case MOVE_TO_BALL:
@@ -721,15 +749,133 @@ void run_machine()
 		}
 		break;
 	case RESET:
-		if (determine_rotation_direction())
+		switch(reset_ball)
 		{
-			goto_movetocenter();
+		case REVERSE_AWAY:
+			if (time1[TIMER] > 1000)
+			{
+				reset_ball = ALIGN_TO_SOUTH;
+			}
+			break;
+		case ALIGN_TO_SOUTH:
+			if (determine_rotation_direction())
+			{
+				goto_movetocenter();
+			}
+			break;
 		}
 		break;
 	default:
 		break;
 	}
 	movement(machine_direction, machine_speed);
+}
+
+void edge_detectionv2()
+{
+	const int reverse_speed = 100;
+	const int rotate_speed = 100;
+	const int reverse_duration = 800;
+	const int turn_duration = 200;
+	const int turn_duration_reverse =400;
+	bool frt_lft_detected = SensorValue(FRT_LFT_REFL_IR_PORT) <= FRT_LFT_REFL_IR_THRESHOLD;
+	bool frt_rgt_detected = SensorValue(FRT_RGT_REFL_IR_PORT) <= FRT_RGT_REFL_IR_THRESHOLD;
+	bool bck_lft_detected = SensorValue(BCK_LFT_REFL_IR_PORT) <= BCK_LFT_REFL_IR_THRESHOLD;
+	bool bck_rgt_detected = SensorValue(BCK_RGT_REFL_IR_PORT) <= BCK_RGT_REFL_IR_THRESHOLD;
+	static int bck_lft_count = 0;
+	static int bck_rgt_count = 0;
+	static int frt_lft_count = 0;
+	static int frt_rgt_count = 0;
+	if (SensorValue(FRT_LFT_REFL_IR_PORT) >= FRT_LFT_BLACK_THRESHOLD)
+	{
+		frt_lft_count += 1;
+	}
+	else
+	{
+		frt_lft_count = 0;
+	}
+	if (SensorValue(FRT_RGT_REFL_IR_PORT) >= FRT_RGT_BLACK_THRESHOLD)
+	{
+		frt_rgt_count += 1;
+	}
+	else
+	{
+		frt_rgt_count = 0;
+	}
+	if (SensorValue(BCK_LFT_REFL_IR_PORT) >= BCK_LFT_BLACK_THRESHOLD)
+	{
+		bck_lft_count += 1;
+	}
+	else
+	{
+		bck_lft_count = 0;
+	}
+	if (SensorValue(BCK_RGT_REFL_IR_PORT) >= BCK_RGT_BLACK_THRESHOLD)
+	{
+		bck_rgt_count += 1;
+	}
+	else
+	{
+		bck_rgt_count = 0;
+	}
+	if (frt_lft_detected || frt_lft_count >= 24)
+	{
+		movement(REVERSE, reverse_speed);
+		delay(reverse_duration);
+		movement(CLOCKWISE, rotate_speed);
+		delay(turn_duration);
+		send_debug_msg("front left detected\n", 32);
+		frt_lft_count = 0;
+	}
+	else if (frt_rgt_detected || frt_rgt_count >= 24)
+	{
+		movement(REVERSE, reverse_speed);
+		delay(reverse_duration);
+		movement(CCLOCKWISE, rotate_speed);
+		delay(turn_duration);
+		send_debug_msg("front right detected\n", 32);
+		frt_rgt_count = 0;
+	}
+	else if (bck_lft_detected || bck_lft_count >= 24)
+	{
+		if (machine_mode == RETURN_THE_BALL  && return_ball ==  RETURN_TO_BASE)
+		{
+			movement(STRAIGHT, reverse_speed);
+			delay(reverse_duration - 100);
+			movement(CCLOCKWISE, rotate_speed);
+			delay(turn_duration_reverse + 100);
+			send_debug_msg("back left detected\n", 32);
+		}
+		else
+		{
+			movement(STRAIGHT, reverse_speed);
+			delay(reverse_duration);
+			movement(CCLOCKWISE, rotate_speed);
+			delay(turn_duration_reverse);
+			send_debug_msg("back left detected\n", 32);
+		}
+		bck_lft_count = 0;
+	}
+	else if (bck_rgt_detected || bck_rgt_count >= 24)
+	{
+		if (machine_mode == RETURN_THE_BALL  && return_ball ==  RETURN_TO_BASE)
+		{
+			movement(STRAIGHT, reverse_speed);
+			delay(reverse_duration - 100);
+			movement(CLOCKWISE, rotate_speed);
+			delay(turn_duration_reverse + 50);
+			send_debug_msg("back right detected\n", 32);
+		}
+		else
+		{
+			movement(STRAIGHT, reverse_speed);
+			delay(reverse_duration);
+			movement(CLOCKWISE, rotate_speed);
+			delay(turn_duration_reverse);
+			send_debug_msg("back right detected\n", 32);
+		}
+		bck_rgt_count = 0;
+	}
 }
 
 void edge_detection()
@@ -804,7 +950,7 @@ task runMachine()
 {
 	while (1)
 	{
-		edge_detection();
+		edge_detectionv2();
 		run_machine();
 		wait1Msec(20);
 	}
@@ -844,24 +990,24 @@ task main()
 		//#endif
 		//get_heading();
 		//motor[ROLLER_MOT_PORT] = 127;
-//		int left_analog = take_average(BTM_DIST_IR_PORT, 1);
-//		btm_distance = convert_ir_reading_to_distance(LEFT_DIST_IR_TYPE, left_analog);
-//		bool left_curr_in_range =
-//		check_within_range(btm_distance, 0, 400);
-//		int right_analog = take_average(TOP_DIST_IR_PORT, 1);
-//		top_distance = convert_ir_reading_to_distance(RIGHT_DIST_IR_TYPE, right_analog);
-//		bool right_curr_in_range =
-//		check_within_range(top_distance, 0, 400);
-//		int center_analog = take_average(CENTER_DIST_IR_PORT, 1);
-//		center_distance = convert_ir_reading_to_distance(CENTER_DIST_IR_TYPE, center_analog);
-//		bool center_curr_in_range =
-//		check_within_range(btm_distance, 0, 400);
+		//		int left_analog = take_average(BTM_DIST_IR_PORT, 1);
+		//		btm_distance = convert_ir_reading_to_distance(LEFT_DIST_IR_TYPE, left_analog);
+		//		bool left_curr_in_range =
+		//		check_within_range(btm_distance, 0, 400);
+		//		int right_analog = take_average(TOP_DIST_IR_PORT, 1);
+		//		top_distance = convert_ir_reading_to_distance(RIGHT_DIST_IR_TYPE, right_analog);
+		//		bool right_curr_in_range =
+		//		check_within_range(top_distance, 0, 400);
+		//		int center_analog = take_average(CENTER_DIST_IR_PORT, 1);
+		//		center_distance = convert_ir_reading_to_distance(CENTER_DIST_IR_TYPE, center_analog);
+		//		bool center_curr_in_range =
+		//		check_within_range(btm_distance, 0, 400);
 
-//#ifdef WIFI_DEBUGGING
-//		char buf1[32];
-//		snprintf(buf1, sizeof(buf1), "Value: %.2f, %.2f, %.2f\n", left_analog, right_analog, center_analog);
-//		send_debug_msg(buf1, sizeof(buf1));
-//#endif
+		//#ifdef WIFI_DEBUGGING
+		//		char buf1[32];
+		//		snprintf(buf1, sizeof(buf1), "Value: %.2f, %.2f, %.2f\n", left_analog, right_analog, center_analog);
+		//		send_debug_msg(buf1, sizeof(buf1));
+		//#endif
 		//keep_door_closed();
 		//int door_analog = take_average(DOOR_DIST_IR_PORT, 1);
 		//float door_distance = convert_ir_reading_to_distance(DOOR_DIST_IR_TYPE, door_analog);
